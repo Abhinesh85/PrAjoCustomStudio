@@ -912,7 +912,8 @@ $("msgThread").addEventListener("submit", async (e) => {
     try { const b = await error?.context?.json?.(); if (b?.error) m = b.error; } catch {}
     $("msgErr").textContent = m; $("msgErr").hidden = false; return;
   }
-  msgs.log.push(data.message); box.value = ""; renderThread(); loadThreads();
+  if (!msgs.log.some((m) => m.id === data.message.id)) msgs.log.push(data.message);   // live update may have added it already
+  box.value = ""; renderThread(); loadThreads();
 });
 function startMessages() {
   if (!supa || msgs.chan) return;
@@ -927,6 +928,29 @@ function startMessages() {
     })
     .subscribe();
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadThreads(); });
+}
+
+/* ---------- store sync: publish selling prices for the store admin, update linked listings ---------- */
+let storeSyncTimer = null;
+function queueStoreSync() { clearTimeout(storeSyncTimer); storeSyncTimer = setTimeout(syncStorePrices, 1500); }
+async function syncStorePrices() {
+  if (!store || !supa || !state.loaded || !navigator.onLine) return;
+  const prices = {};
+  for (const [id, p] of state.products) {
+    const r = calc(p);
+    prices[id] = { name: p.name || "Untitled", sell: Math.round(r.sell * 100) / 100, cost: Math.round(r.cost * 100) / 100 };
+  }
+  const prev = store.all()["app/store-prices"];
+  if (JSON.stringify(prev?.prices) !== JSON.stringify(prices)) store.doc("app/store-prices").set({ prices, updatedAt: Date.now() });
+  // Listings linked to a product follow its selling price.
+  const { data, error } = await supa.from("listings").select("id, pricing_id, price").eq("price_source", "pricing").not("pricing_id", "is", null);
+  if (error || !data) return;   // listings table not set up yet
+  for (const l of data) {
+    const pr = prices[l.pricing_id];
+    if (pr && pr.sell > 0 && Math.abs(pr.sell - Number(l.price)) > 0.004) {
+      await supa.from("listings").update({ price: pr.sell, updated_at: new Date().toISOString() }).eq("id", l.id);
+    }
+  }
 }
 
 /* ---------- calculator ---------- */
@@ -1806,6 +1830,7 @@ $("importMsg").addEventListener("click", async (e) => {
     if (snap.exists) state.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(JSON.stringify(snap.data())) };
     if (!$("view-settings").hidden) fillSettings();
     renderCalc();
+    queueStoreSync();
   }, () => {});
   db.collection("products").onSnapshot((snap) => {
     state.products = new Map(snap.docs.map((d) => [d.id, d.data()]));
@@ -1817,6 +1842,7 @@ $("importMsg").addEventListener("click", async (e) => {
       else fillSelect();
     }
     applyRemote();
+    queueStoreSync();
   }, () => { if (!state.loaded) bootLocal(); });
   db.collection("orders").onSnapshot((snap) => {
     state.orders = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
