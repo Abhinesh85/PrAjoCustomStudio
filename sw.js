@@ -1,6 +1,6 @@
 // Offline support: the app's own files are fetched fresh when online and served from cache when not.
 // Supabase requests always go to the network (the app keeps its own offline copy of your data).
-const CACHE = "prajo-v5";
+const CACHE = "prajo-v6";
 const SHELL = [
   "./", "./index.html", "./config.js", "./manifest.webmanifest",
   "./icon-180.png", "./icon-192.png", "./icon-512.png",

@@ -381,7 +381,7 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
           <h2>Market check <span class="ai-tag">Free</span></h2>
           <p class="hint" style="margin:0">Search for similar products, then type in the prices of a few listings you see. "In 20+ baskets" and "sold" counts on Etsy show strong demand.</p>
           <div class="row">
-            <a class="btn ghost" id="srchEtsy" href="https://www.etsy.com/ca/" target="_blank" rel="noopener noreferrer">Search Etsy</a>
+            <a class="btn ghost" id="srchEtsy" href="https://www.etsy.com/" target="_blank" rel="noopener noreferrer">Search Etsy</a>
             <a class="btn ghost" id="srchGoogle" href="https://www.google.com/shopping" target="_blank" rel="noopener noreferrer">Google Shopping</a>
           </div>
           <label class="f"><span>Prices of similar listings ($)</span><input class="in" id="p_comps" autocomplete="off" placeholder="e.g. 34.99, 42, 29.50"></label>
@@ -510,6 +510,14 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
       </div>
       <div class="stack">
         <div class="card">
+          <h2>Business location</h2>
+          <div class="row">
+            <label class="f"><span>Location</span><input class="in" id="s_location" autocomplete="off" placeholder="City, State, Country"></label>
+            <label class="f"><span>Currency</span><input class="in" id="s_currency" autocomplete="off" maxlength="3" placeholder="USD" style="text-transform:uppercase"></label>
+          </div>
+          <p class="hint">Used by the market check: which Etsy and Google site to search, and the currency for prices.</p>
+        </div>
+        <div class="card">
           <h2>Etsy fees</h2>
           <div class="row">
             <label class="f"><span>Transaction %</span><input class="in num" id="s_etsyTx" inputmode="decimal"></label>
@@ -560,7 +568,7 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
     <div class="stack" id="i_lines"></div>
     <button class="btn ghost" type="button" id="i_addLine">+ Add another product</button>
     <table id="i_table"></table>
-    <label class="check"><input type="checkbox" id="i_tax"><span id="i_taxLbl">Add HST (13%)</span></label>
+    <label class="check"><input type="checkbox" id="i_tax"><span id="i_taxLbl">Add sales tax</span></label>
     <label class="f"><span>Notes</span><textarea class="in" id="i_notes" rows="2" placeholder="Payment terms, thank-you note…"></textarea></label>
     <div class="thanks">Thank you for your business!</div>
     <button class="btn ghost" type="button" id="i_log">Log these as orders</button>
@@ -598,11 +606,12 @@ const newId = () => "p" + Date.now().toString(36) + Math.random().toString(36).s
 
 const DEFAULT_SETTINGS = {
   laborRate: 20.4, markup: 100, thin: 25,
-  inkPrice: 16.99, inkSize: 125, inkQty: 6, inkShip: 0, inkTax: 13, uvRate: 0.6, uvWatts: 150, laserRate: 0.5, laserWatts: 60, kwh: 0.18,
+  inkPrice: 16.99, inkSize: 125, inkQty: 6, inkShip: 0, inkTax: 8.75, uvRate: 0.6, uvWatts: 150, laserRate: 0.5, laserWatts: 60, kwh: 0.18,
   tiers: [{ qty: 1, pct: 0 }, { qty: 3, pct: 5 }, { qty: 5, pct: 10 }, { qty: 10, pct: 15 }],
   etsyTx: 6.5, etsyPay: 3, etsyFixed: 0.25, etsyListing: 0.2,
   biz: "PrAjo Custom Studio", tag: "Custom Gifts & Personalized Moments", contact: "",
-  taxName: "HST", taxPct: 13,
+  taxName: "Sales tax", taxPct: 8.75,
+  location: "Sacramento, California, USA", currency: "USD",
 };
 
 const state = {
@@ -1002,7 +1011,7 @@ $("olist").addEventListener("click", (e) => {
 });
 
 /* ---------- settings ---------- */
-const S_FIELDS = { s_inkPrice: "inkPrice", s_inkSize: "inkSize", s_inkShip: "inkShip", s_inkQty: "inkQty", s_inkTax: "inkTax", s_uvRate: "uvRate", s_uvWatts: "uvWatts", s_laserRate: "laserRate", s_laserWatts: "laserWatts", s_kwh: "kwh", s_laborRate: "laborRate", s_markup: "markup", s_thin: "thin", s_etsyTx: "etsyTx", s_etsyPay: "etsyPay", s_etsyFixed: "etsyFixed", s_etsyListing: "etsyListing", s_biz: "biz", s_tag: "tag", s_contact: "contact", s_taxName: "taxName", s_taxPct: "taxPct" };
+const S_FIELDS = { s_location: "location", s_currency: "currency", s_inkPrice: "inkPrice", s_inkSize: "inkSize", s_inkShip: "inkShip", s_inkQty: "inkQty", s_inkTax: "inkTax", s_uvRate: "uvRate", s_uvWatts: "uvWatts", s_laserRate: "laserRate", s_laserWatts: "laserWatts", s_kwh: "kwh", s_laborRate: "laborRate", s_markup: "markup", s_thin: "thin", s_etsyTx: "etsyTx", s_etsyPay: "etsyPay", s_etsyFixed: "etsyFixed", s_etsyListing: "etsyListing", s_biz: "biz", s_tag: "tag", s_contact: "contact", s_taxName: "taxName", s_taxPct: "taxPct" };
 function fillSettings() {
   const s = state.settings;
   Object.entries(S_FIELDS).forEach(([id, k]) => { if (document.activeElement !== $(id)) $(id).value = s[k] ?? ""; });
@@ -1178,6 +1187,15 @@ async function saveFile(blob, filename, type) {
 }
 
 /* ---------- free market check: search links, typed-in comparables, Ask Claude ---------- */
+const cur = (s = state.settings) => (String(s.currency || "USD").trim().toUpperCase() || "USD");
+// Which Etsy and Google storefront to search, from the location in Settings.
+function marketSite(s = state.settings) {
+  const loc = String(s.location || "");
+  if (/canada/i.test(loc)) return { etsy: "https://www.etsy.com/ca/", gl: "ca" };
+  if (/united kingdom|\bUK\b|england|scotland|wales/i.test(loc)) return { etsy: "https://www.etsy.com/uk/", gl: "uk" };
+  if (/australia/i.test(loc)) return { etsy: "https://www.etsy.com/au/", gl: "au" };
+  return { etsy: "https://www.etsy.com/", gl: "us" };
+}
 const compPrices = (text) => (String(text || "").match(/\d+(?:\.\d+)?/g) || []).map(Number).filter((n) => n > 0 && n < 100000);
 const charmUp = (x) => Math.ceil(x + 0.01) - 0.01;     // smallest .99 price at or above x
 const searchTerm = (d) => (d.name || "").trim() + (/custom|personali[sz]|engrav|monogram/i.test(d.name || "") ? "" : " personalized");
@@ -1189,16 +1207,16 @@ function healthyMin(d, r, s = state.settings) {
 }
 function claudePrompt(d, r, s = state.settings) {
   return [
-    "I run a small Canadian custom-gift studio (UV printing and laser engraving) that sells on Etsy. Please research current prices for this product on Etsy and the web, then help me price it.",
+    `I run a small custom-gift studio in ${s.location || "the USA"} (UV printing and laser engraving) that sells on Etsy. Please research current prices for this product on Etsy and the web, then help me price it.`,
     "",
     `Product: ${d.name || "(unnamed)"}`,
     PROC_LABEL[d.process] ? `Made with: ${PROC_LABEL[d.process]}` : null,
-    `My true cost per unit: ${money(r.cost)} CAD`,
-    r.sell > 0 ? `My current price: ${money(r.sell)} CAD` : null,
+    `My true cost per unit: ${money(r.cost)} ${cur(s)}`,
+    r.sell > 0 ? `My current price: ${money(r.sell)} ${cur(s)}` : null,
     d.etsy ? `Etsy fees per sale: ${num(s.etsyTx) + num(s.etsyPay)}% + ${money(num(s.etsyFixed) + num(s.etsyListing))}` : null,
     "",
     "Please give me:",
-    "1. 4–6 comparable listings with their prices (in CAD) and links",
+    `1. 4–6 comparable listings with their prices (in ${cur(s)}) and links`,
     "2. The typical market price and the low–high range",
     "3. How strong demand looks, with evidence (sales counts, reviews, \"in baskets\", seasonality)",
     "4. A recommended price for me and why, including my profit after fees",
@@ -1207,8 +1225,9 @@ function claudePrompt(d, r, s = state.settings) {
 let freeSuggested = 0;
 function renderFree(d, r) {
   const q = encodeURIComponent(searchTerm(d));
-  $("srchEtsy").href = d.name ? `https://www.etsy.com/ca/search?q=${q}` : "https://www.etsy.com/ca/";
-  $("srchGoogle").href = d.name ? `https://www.google.com/search?tbm=shop&gl=ca&q=${q}` : "https://www.google.com/shopping";
+  const m = marketSite();
+  $("srchEtsy").href = d.name ? `${m.etsy}search?q=${q}` : m.etsy;
+  $("srchGoogle").href = d.name ? `https://www.google.com/search?tbm=shop&gl=${m.gl}&q=${q}` : "https://www.google.com/shopping";
   $("askClaude").href = "https://claude.ai/new?q=" + encodeURIComponent(claudePrompt(d, r));
   const prices = compPrices(d.comps).sort((a, b) => a - b);
   freeSuggested = 0;
@@ -1273,7 +1292,7 @@ function renderMarket() {
       <p class="hint" style="margin:0">${esc(r.demand_notes)}</p>
       <p class="hint" style="margin:0">${esc(r.reasoning)}</p>
       ${comps ? `<div class="comps">${comps}</div>` : ""}
-      <p class="hint" style="margin:0">Checked ${esc(new Date(m.checkedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))} · prices in ${esc(r.currency || "CAD")} · AI estimates from public listings, so open a few before deciding.</p>`;
+      <p class="hint" style="margin:0">Checked ${esc(new Date(m.checkedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))} · prices in ${esc(r.currency || cur())} · AI estimates from public listings, so open a few before deciding.</p>`;
   }
   $("mktBody").innerHTML = html;
 }
@@ -1285,7 +1304,7 @@ $("mktBtn").onclick = async () => {
   mktBusy = true; mktError = ""; renderMarket();
   try {
     const { data, error } = await supa.functions.invoke("market-check", {
-      body: { product: { name: d.name, process: PROC_LABEL[d.process] || "", cost: +r.cost.toFixed(2), currentPrice: +r.sell.toFixed(2), etsy: !!d.etsy } },
+      body: { location: state.settings.location || "", currency: cur(), product: { name: d.name, process: PROC_LABEL[d.process] || "", cost: +r.cost.toFixed(2), currentPrice: +r.sell.toFixed(2), etsy: !!d.etsy } },
     });
     if (error) {
       let msg = "The market check didn't work. Try again in a moment.";
