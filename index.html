@@ -275,6 +275,35 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .rb-save { padding: 11px 16px; font-size: 15px; min-height: 44px; }
   .t-scroll-hint { display: block; }
 }
+/* messages */
+.tabbadge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--saffron); color: #1a0f05; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+nav.tabs button { position: relative; }
+@media (max-width: 859px) { nav.tabs .tabbadge { position: absolute; top: 4px; left: calc(50% + 6px); } }
+.msg-wrap { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 859px) { .msg-wrap { grid-template-columns: 1fr; } .msg-wrap.reading .msg-list { display: none; } .msg-wrap:not(.reading) .msg-thread { display: none; } }
+.msg-list { display: flex; flex-direction: column; gap: 8px; }
+.msg-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; cursor: pointer; width: 100%; }
+.msg-item[aria-current="true"] { border-color: var(--saffron); }
+.msg-item .who { font-weight: 800; overflow-wrap: anywhere; }
+.msg-item .when { font-size: 12px; color: var(--muted); }
+.msg-item .prev { grid-column: 1 / -1; font-size: 13.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-item .tagline { grid-column: 1 / -1; font-size: 12px; color: var(--saffron); }
+.msg-item.unread .who::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--saffron); margin-right: 7px; vertical-align: 1px; }
+.msg-item.closed { opacity: .6; }
+.msg-thread { display: flex; flex-direction: column; gap: 12px; }
+.msg-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.msg-head .info { flex: 1; min-width: 0; }
+.msg-head .info b { display: block; font-size: 17px; }
+.msg-head .info span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.msg-log { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; padding: 4px 2px; }
+.mb { max-width: 84%; padding: 9px 13px; border-radius: 16px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mb time { display: block; font-size: 11px; opacity: .65; margin-top: 3px; }
+.mb.cust { align-self: flex-start; background: var(--field); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.mb.own { align-self: flex-end; background: var(--saffron); color: #1a0f05; border-bottom-right-radius: 5px; }
+.quick { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.quick button { flex: none; border: 1px solid var(--line); background: var(--field); color: var(--fg); border-radius: 999px; padding: 8px 12px; font-size: 13px; cursor: pointer; min-height: 36px; }
+.reply-row { display: flex; gap: 8px; align-items: flex-end; }
+.reply-row textarea { flex: 1; min-height: 48px; max-height: 160px; resize: none; }
 @media (prefers-reduced-motion: no-preference) { .tier, .pitem { transition: border-color .15s; } }
 </style>
 
@@ -307,6 +336,7 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   <button role="tab" id="tab-calc" data-view="calc" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M16 11h0M8 15h2M12 15h2M16 15v3M8 18h2M12 18h2"/></svg>Calculator</button>
   <button role="tab" id="tab-products" data-view="products" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 4h10l1 4H6z"/><path d="M6 8h12l-1 12H7z"/></svg>Products</button>
   <button role="tab" id="tab-orders" data-view="orders" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16v13H4z"/><path d="M9 7V4h6v3M8 12h8M8 16h5"/></svg>Orders</button>
+  <button role="tab" id="tab-messages" data-view="messages" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>Messages<span class="tabbadge" id="msgBadge" hidden></span></button>
   <button role="tab" id="tab-settings" data-view="settings" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Settings</button>
 </nav>
 
@@ -506,6 +536,14 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   </section>
 
   <!-- SETTINGS -->
+  <!-- MESSAGES -->
+  <section class="view" id="view-messages" hidden>
+    <div class="msg-wrap" id="msgWrap">
+      <div class="msg-list" id="msgList"></div>
+      <div class="msg-thread card" id="msgThread"></div>
+    </div>
+  </section>
+
   <section class="view" id="view-settings" hidden>
     <div class="grid2">
       <div class="stack">
@@ -768,7 +806,7 @@ let toastTimer;
 function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 2200); }
 
 /* ---------- tabs ---------- */
-const VIEWS = ["calc", "products", "orders", "settings"];
+const VIEWS = ["calc", "products", "orders", "messages", "settings"];
 function show(view) {
   VIEWS.forEach((v) => { $("view-" + v).hidden = v !== view; $("tab-" + v).setAttribute("aria-selected", v === view); });
   document.body.classList.toggle("calc-open", view === "calc");
@@ -776,9 +814,120 @@ function show(view) {
   if (view === "products") renderProducts();
   if (view === "orders") renderOrders();
   if (view === "settings") fillSettings();
+  if (view === "messages") renderThreads();
   window.scrollTo({ top: 0 });
 }
 document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
+
+/* ---------- messages from the store (tables threads/messages, function "chat") ---------- */
+const QUICK = [
+  "Thanks for reaching out! ",
+  "Yes, we can personalise that. What name and font would you like?",
+  "Turnaround is usually 3–5 business days, plus shipping.",
+  "Local pickup is available in Sacramento.",
+  "For 10 or more pieces we offer a bulk discount. How many do you need?",
+  "Could you send a photo or logo? A PNG or JPG works best.",
+];
+const msgs = { threads: [], current: null, log: [], loaded: false, chan: null };
+const ago = (iso) => {
+  const s = (Date.now() - new Date(iso)) / 1000;
+  return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+async function loadThreads() {
+  if (!supa) return;
+  const { data, error } = await supa.from("threads")
+    .select("id, customer_name, customer_email, product_name, status, owner_unread, last_message, last_from, last_message_at, created_at")
+    .order("last_message_at", { ascending: false }).limit(300);
+  if (error) return;
+  msgs.threads = data; msgs.loaded = true;
+  const unread = data.filter((t) => t.owner_unread).length;
+  $("msgBadge").textContent = unread; $("msgBadge").hidden = !unread;
+  if (!$("view-messages").hidden) renderThreads();
+}
+function renderThreads() {
+  const list = $("msgList");
+  if (!supa) { list.innerHTML = `<div class="empty"><b>Sign in to see messages</b>Customer messages from your store appear here.</div>`; $("msgThread").hidden = true; return; }
+  if (!msgs.threads.length) {
+    list.innerHTML = `<div class="empty"><b>${msgs.loaded ? "No messages yet" : "Loading messages…"}</b>${msgs.loaded ? "When a customer writes from your store, the conversation shows up here." : ""}</div>`;
+  } else {
+    list.innerHTML = msgs.threads.map((t) => `
+      <button class="msg-item${t.owner_unread ? " unread" : ""}${t.status === "closed" ? " closed" : ""}" type="button" data-t="${t.id}" aria-current="${msgs.current?.id === t.id}">
+        <span class="who">${esc(t.customer_name)}</span><span class="when">${esc(ago(t.last_message_at))}</span>
+        ${t.product_name ? `<span class="tagline">About: ${esc(t.product_name)}</span>` : ""}
+        <span class="prev">${t.last_from === "owner" ? "You: " : ""}${esc(t.last_message || "")}</span>
+      </button>`).join("");
+  }
+  renderThread();
+}
+function renderThread() {
+  const box = $("msgThread"), t = msgs.current;
+  box.hidden = !t && innerWidth < 860;
+  if (!t) { box.innerHTML = `<p class="hint" style="margin:0">Pick a conversation to read and reply.</p>`; return; }
+  box.innerHTML = `
+    <div class="msg-head">
+      <button class="btn ghost" type="button" id="msgBack" style="padding:8px 12px">‹ Back</button>
+      <div class="info"><b>${esc(t.customer_name)}</b><span>${esc(t.customer_email)}${t.product_name ? ` · about ${esc(t.product_name)}` : ""}</span></div>
+      <button class="btn ghost" type="button" id="msgStatus">${t.status === "closed" ? "Reopen" : "Mark done"}</button>
+    </div>
+    <div class="msg-log" id="msgLog">${msgs.log.map((m) => `<div class="mb ${m.sender === "owner" ? "own" : "cust"}">${esc(m.body)}<time>${esc(new Date(m.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</time></div>`).join("") || `<p class="hint">Loading…</p>`}</div>
+    <div class="quick">${QUICK.map((q, i) => `<button type="button" data-q="${i}">${esc(q.length > 34 ? q.slice(0, 32) + "…" : q)}</button>`).join("")}</div>
+    <p class="hint bad" id="msgErr" hidden style="margin:0"></p>
+    <form class="reply-row" id="msgReply">
+      <textarea class="in" id="msgText" rows="2" placeholder="Write a reply…" aria-label="Your reply" maxlength="4000"></textarea>
+      <button class="btn primary" type="submit" id="msgSendBtn" style="padding:12px 18px">Send</button>
+    </form>
+    <p class="hint" style="margin:0">The customer sees your reply when they open the chat on your store.</p>`;
+  const log = $("msgLog"); log.scrollTop = log.scrollHeight;
+}
+async function openThread(id) {
+  const t = msgs.threads.find((x) => x.id === id); if (!t) return;
+  msgs.current = t; msgs.log = [];
+  $("msgWrap").classList.add("reading");
+  renderThreads();
+  const { data } = await supa.from("messages").select("id, sender, body, created_at").eq("thread_id", id).order("created_at").limit(500);
+  if (msgs.current?.id !== id) return;
+  msgs.log = data || []; renderThread();
+  if (t.owner_unread) { t.owner_unread = false; await supa.from("threads").update({ owner_unread: false }).eq("id", id); loadThreads(); }
+}
+$("msgList").addEventListener("click", (e) => { const b = e.target.closest(".msg-item"); if (b) openThread(b.dataset.t); });
+$("msgThread").addEventListener("click", async (e) => {
+  if (e.target.id === "msgBack") { msgs.current = null; $("msgWrap").classList.remove("reading"); renderThreads(); return; }
+  if (e.target.dataset.q != null) { const box = $("msgText"); box.value = (box.value ? box.value.trimEnd() + " " : "") + QUICK[+e.target.dataset.q]; box.focus(); return; }
+  if (e.target.id === "msgStatus" && msgs.current) {
+    const status = msgs.current.status === "closed" ? "open" : "closed";
+    msgs.current.status = status; renderThread();
+    await supa.from("threads").update({ status }).eq("id", msgs.current.id); loadThreads();
+  }
+});
+$("msgThread").addEventListener("submit", async (e) => {
+  if (e.target.id !== "msgReply") return;
+  e.preventDefault();
+  const t = msgs.current, box = $("msgText"), text = box.value.trim();
+  if (!t || !text) return;
+  $("msgSendBtn").disabled = true; $("msgErr").hidden = true;
+  const { data, error } = await supa.functions.invoke("chat", { body: { action: "reply", threadId: t.id, message: text } });
+  $("msgSendBtn").disabled = false;
+  if (error || !data?.message) {
+    let m = navigator.onLine ? "Couldn't send. Try again." : "You're offline. Replies need internet.";
+    try { const b = await error?.context?.json?.(); if (b?.error) m = b.error; } catch {}
+    $("msgErr").textContent = m; $("msgErr").hidden = false; return;
+  }
+  msgs.log.push(data.message); box.value = ""; renderThread(); loadThreads();
+});
+function startMessages() {
+  if (!supa || msgs.chan) return;
+  loadThreads();
+  msgs.chan = supa.channel("shop-messages")
+    .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => loadThreads())
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (p) => {
+      if (msgs.current && p.new.thread_id === msgs.current.id && !msgs.log.some((m) => m.id === p.new.id)) {
+        msgs.log.push(p.new); renderThread();
+        if (p.new.sender === "customer" && !$("view-messages").hidden) supa.from("threads").update({ owner_unread: false }).eq("id", msgs.current.id);
+      }
+    })
+    .subscribe();
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadThreads(); });
+}
 
 /* ---------- calculator ---------- */
 const FIELDS = ["name", "comps", "inkCost", "inkMl", "uvMinutes", "laserMinutes", "packCost", "packQty", "packaging", "overhead", "minutes", "laborRate", "discount"];
@@ -1445,6 +1594,7 @@ loadDraft(null);
 state.currentId = initialCurrent || null;
 let initialTab = "calc";
 try { initialTab = localStorage.getItem("prajo:tab") || "calc"; } catch {}
+if (location.hash === "#messages") initialTab = "messages";
 show(VIEWS.includes(initialTab) ? initialTab : "calc");
 
 /* ---------- cloud sync (Supabase) ----------
@@ -1643,6 +1793,7 @@ $("importMsg").addEventListener("click", async (e) => {
   const db = makeStore(sb, user.id);
   store = db;
   supa = sb;
+  startMessages();
   db.collection("market").onSnapshot((snap) => {
     marketCache.clear();
     snap.docs.forEach((d) => marketCache.set(d.id, d.data()));
