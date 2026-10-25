@@ -635,6 +635,15 @@ nav.tabs button { position: relative; }
           <p class="hint" id="importMsg"></p>
           <button class="btn danger" type="button" id="signOutBtn" hidden>Sign out</button>
         </div>
+        <div class="card">
+          <h2>Telegram alerts</h2>
+          <p class="hint" style="margin:0" id="tgInfo">Get every new store message on Telegram, and reply to customers right from the chat.</p>
+          <div class="row">
+            <button class="btn primary" type="button" id="tgConnect" style="padding:12px">Connect Telegram</button>
+            <button class="btn ghost" type="button" id="tgTest" hidden>Send a test</button>
+          </div>
+          <p class="hint" style="margin:0" id="tgMsg"></p>
+        </div>
       </div>
     </div>
   </section>
@@ -815,6 +824,7 @@ function show(view) {
   if (view === "orders") renderOrders();
   if (view === "settings") fillSettings();
   if (view === "messages") renderThreads();
+  if (view === "settings") tgStatus();
   window.scrollTo({ top: 0 });
 }
 document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
@@ -952,6 +962,35 @@ async function syncStorePrices() {
     }
   }
 }
+
+/* ---------- Telegram alerts (managed through the chat function) ---------- */
+async function tgCall(action) {
+  const { data, error } = await supa.functions.invoke("chat", { body: { action } });
+  if (error) { let m = "Couldn't reach Telegram setup. Try again."; try { const b = await error.context?.json?.(); if (b?.error) m = b.error; } catch {} throw new Error(m); }
+  return data;
+}
+async function tgStatus() {
+  if (!supa) { $("tgInfo").textContent = "Sign in to set up Telegram alerts."; $("tgConnect").disabled = true; return; }
+  try {
+    const st = await tgCall("tg_status");
+    $("tgConnect").textContent = st.connected ? "Reconnect" : "Connect Telegram";
+    $("tgTest").hidden = !st.connected;
+    $("tgInfo").innerHTML = st.connected
+      ? `<span class="good">● Connected</span>${st.name ? ` to ${esc(st.name)}` : ""}. New store messages arrive in Telegram. Reply to one (swipe left on it) and your answer goes to the customer.`
+      : st.hasToken ? "Your bot is ready. Open it in Telegram, send it any message (like hi), then tap Connect."
+      : "Not set up yet. First create a bot with @BotFather and add its token to Supabase (see the setup guide).";
+  } catch (e) { $("tgInfo").textContent = e.message; }
+}
+$("tgConnect").onclick = async () => {
+  $("tgConnect").disabled = true; $("tgMsg").textContent = "Connecting…";
+  try { const r = await tgCall("tg_connect"); $("tgMsg").textContent = `Connected${r.name ? ` to ${r.name}` : ""}. Check Telegram for a confirmation.`; }
+  catch (e) { $("tgMsg").textContent = e.message; }
+  $("tgConnect").disabled = false; tgStatus();
+};
+$("tgTest").onclick = async () => {
+  $("tgMsg").textContent = "Sending…";
+  try { await tgCall("tg_test"); $("tgMsg").textContent = "Test sent. Check Telegram."; } catch (e) { $("tgMsg").textContent = e.message; }
+};
 
 /* ---------- calculator ---------- */
 const FIELDS = ["name", "comps", "inkCost", "inkMl", "uvMinutes", "laserMinutes", "packCost", "packQty", "packaging", "overhead", "minutes", "laborRate", "discount"];
