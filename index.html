@@ -127,6 +127,27 @@ a.btn { text-decoration: none; }
 .comps a { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; font-size: 14px; min-height: 44px; align-items: center; }
 .comps a span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .comps a small { color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.step { flex: none; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--field); color: var(--fg); font-size: 20px; font-weight: 700; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; touch-action: manipulation; }
+.step:active { background: var(--tint); color: var(--saffron); }
+.step:focus-visible { outline: 2px solid var(--saffron); }
+.stepper.big .step { width: 46px; height: 46px; font-size: 26px; }
+.price-edit { flex: 1; display: flex; align-items: baseline; gap: 2px; min-width: 0; font-family: var(--f-display); font-size: 38px; font-weight: 800; letter-spacing: -.02em; }
+.edit { flex: 1; display: flex; align-items: baseline; gap: 1px; min-width: 0; font-family: var(--f-display); font-size: 17px; font-weight: 800; }
+.price-edit input, .edit input { background: transparent; border: 0; border-bottom: 2px dashed var(--line); border-radius: 0; color: inherit; font: inherit; letter-spacing: inherit; width: 100%; min-width: 0; padding: 0 0 2px; }
+.price-edit input:focus, .edit input:focus { outline: none; border-bottom-color: var(--saffron); }
+.edit input { font-size: 17px; }
+.edit input.bad { color: var(--danger); }
+.pc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#priceCard .mini > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#priceCard .edit input { text-align: center; }
+@media (max-width: 520px) {
+  #priceCard .mini { grid-template-columns: 1fr; }
+  #priceCard .mini > div { flex-direction: row; align-items: center; justify-content: space-between; gap: 10px; }
+  #priceCard .mini > div > small { flex: none; }
+  #priceCard .mini .stepper { flex: 0 1 200px; }
+}
+.pc-actions:empty, #pcCalc:empty { display: none; }
 .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 700; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--saffron); flex: none; }
 .toggle small { display: block; font-weight: 500; font-size: 12.5px; color: var(--muted); }
@@ -371,8 +392,6 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
             <label class="f"><span id="pctLabel">Markup %</span><input class="in num" id="p_pct" inputmode="decimal"></label>
             <label class="f"><span>Discount %</span><input class="in num" id="p_discount" inputmode="decimal"></label>
           </div>
-          <label class="f"><span>Your selling price ($)</span><input class="in num" id="p_finalPrice" inputmode="decimal" placeholder="Use calculated price"></label>
-          <p class="hint" id="finalHint"></p>
           <label class="toggle"><input type="checkbox" id="p_etsy"><span>Sold on Etsy <small id="etsyToggleHint"></small></span></label>
           <p class="hint" id="pctHint"></p>
         </div>
@@ -405,6 +424,35 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
         <div class="card">
           <h2>Cost per unit</h2>
           <div class="breakdown num" id="breakdown"></div>
+        </div>
+        <div class="tier hero-tier" id="priceCard">
+          <div class="lbl" id="pcLabel">Selling price</div>
+          <div class="stepper big">
+            <button type="button" class="step" data-step="price" data-dir="-1" aria-label="Lower the price by $1">−</button>
+            <label class="price-edit"><span>$</span><input id="pcPrice" class="num" inputmode="decimal" autocomplete="off" aria-label="Selling price"></label>
+            <button type="button" class="step" data-step="price" data-dir="1" aria-label="Raise the price by $1">+</button>
+          </div>
+          <div class="per">per unit · change the price, profit or margin and the rest updates</div>
+          <div class="mini num">
+            <div><small id="pcProfitLbl">Profit after Etsy</small>
+              <div class="stepper">
+                <button type="button" class="step" data-step="profit" data-dir="-1" aria-label="Lower the profit by $1">−</button>
+                <label class="edit"><span>$</span><input id="pcProfit" class="num" inputmode="decimal" autocomplete="off" aria-label="Profit per unit"></label>
+                <button type="button" class="step" data-step="profit" data-dir="1" aria-label="Raise the profit by $1">+</button>
+              </div>
+            </div>
+            <div><small>Margin</small>
+              <div class="stepper">
+                <button type="button" class="step" data-step="margin" data-dir="-1" aria-label="Lower the margin by 1%">−</button>
+                <label class="edit"><input id="pcMargin" class="num" inputmode="decimal" autocomplete="off" aria-label="Margin percent"><span>%</span></label>
+                <button type="button" class="step" data-step="margin" data-dir="1" aria-label="Raise the margin by 1%">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="charm num" id="pcFees"></div>
+          <div id="pcStatus"></div>
+          <div class="pc-actions" id="pcActions"></div>
+          <div class="charm num" id="pcCalc"></div>
         </div>
         <div id="tiers" class="stack"></div>
         <div class="card">
@@ -733,7 +781,7 @@ function show(view) {
 document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
 
 /* ---------- calculator ---------- */
-const FIELDS = ["name", "finalPrice", "comps", "inkCost", "inkMl", "uvMinutes", "laserMinutes", "packCost", "packQty", "packaging", "overhead", "minutes", "laborRate", "discount"];
+const FIELDS = ["name", "comps", "inkCost", "inkMl", "uvMinutes", "laserMinutes", "packCost", "packQty", "packaging", "overhead", "minutes", "laborRate", "discount"];
 function sortedProducts() { return [...state.products.entries()].sort((a, b) => (a[1].name || "").localeCompare(b[1].name || "")); }
 
 function fillSelect() {
@@ -830,42 +878,33 @@ function renderCalc() {
   ].filter(Boolean).map(([k, v]) => `<div><span>${k}</span><span>${money(v)}</span></div>`).join("");
 
   const disc = r.manual ? 0 : num(d.discount);
-  const etsyOn = !!d.etsy;
-  const calcPrice = r.base * (1 - num(d.discount) / 100);
-  $("finalHint").innerHTML = r.manual
-    ? `Using your price. The calculated price would be <b>${money(calcPrice)}</b>. Clear this box to go back to it.`
-    : `Leave empty to sell at the calculated price, <b>${money(calcPrice)}</b>.`;
-  const pLbl = etsyOn ? "Profit after Etsy" : "Profit / unit";
-  const feeLine = (fee) => etsyOn ? `<div class="charm num">Etsy fees <b>${money(fee)}</b> (incl. ${money(num(s.etsyListing))} listing) · cost ${money(r.cost)}</div>` : "";
-  const charmP = charm(r.base), charmProfit = charmP - r.cost - r.feeOf(charmP);
+  const etsyOn = !!d.etsy, e = etsyParts(d);
   $("etsyToggleHint").textContent = etsyOn ? "Profit shown after Etsy fees and the listing fee" : "Turn on to subtract Etsy fees and the listing fee";
-  let html = `
-    <div class="tier ${disc > 0 || r.manual ? "" : r.status === "loss" ? "loss" : "hero-tier"}">
-      <div class="lbl">${d.mode === "margin" ? "Base · " + num(d.pct) + "% margin" : "Base · " + num(d.pct) + "% markup"}</div>
-      <div class="price num">${money(r.base)}</div>
-      <div class="per">per unit</div>
-      <div class="mini num"><div><small>${pLbl}</small><b class="${r.baseProfit < 0 ? "bad" : "good"}">${money(r.baseProfit)}</b></div><div><small>Margin</small><b>${r.base > 0 ? (r.baseProfit / r.base * 100).toFixed(1) : "0.0"}%</b></div></div>
-      ${feeLine(r.baseFee)}
-      <div class="charm num">Charm price <b>${money(charmP)}</b> → profit ${money(charmProfit)} (${(charmP > 0 ? charmProfit / charmP * 100 : 0).toFixed(1)}% margin)</div>
-    </div>`;
-  if (disc > 0 || r.manual) {
-    html += `
-    <div class="tier ${r.status === "loss" ? "loss" : "hero-tier"}">
-      <div class="lbl">${r.manual ? "Your price" : `After ${disc}% discount`}</div>
-      <div class="price num">${money(r.sell)}</div>
-      <div class="per">per unit</div>
-      <div class="mini num"><div><small>${pLbl}</small><b class="${r.profit < 0 ? "bad" : "good"}">${money(r.profit)}</b></div><div><small>Margin</small><b>${(r.margin * 100).toFixed(1)}%</b></div></div>
-      ${feeLine(r.fee)}
-      <div>${statusPill(r.status)}</div>
-    </div>`;
-  } else {
-    html = html.replace('<div class="charm num">Charm', `<div>${statusPill(r.status)}</div><div class="charm num">Charm`);
-  }
+  // The price card is static markup: only fill fields the user isn't typing in.
+  const fill = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v; };
+  fill("pcPrice", r.sell > 0 ? r.sell.toFixed(2) : "");
+  fill("pcProfit", r.sell > 0 ? r.profit.toFixed(2) : "");
+  fill("pcMargin", r.sell > 0 ? (r.margin * 100).toFixed(1) : "");
+  $("pcProfit").classList.toggle("bad", r.profit < 0);
+  $("pcProfitLbl").textContent = etsyOn ? "Profit after Etsy" : "Profit / unit";
+  $("priceCard").className = "tier " + (r.status === "loss" ? "loss" : "hero-tier");
+  const modeTxt = `${num(d.pct)}% ${d.mode === "margin" ? "margin" : "markup"}`;
+  $("pcLabel").textContent = r.manual ? "Your price" : disc > 0 ? `Selling price · ${disc}% off` : `Selling price · ${modeTxt}`;
+  $("pcFees").innerHTML = etsyOn
+    ? `Etsy fees <b>${money(r.fee)}</b> (incl. ${money(num(s.etsyListing))} listing) · cost ${money(r.cost)}`
+    : `Cost ${money(r.cost)} · no marketplace fees`;
+  $("pcStatus").innerHTML = statusPill(r.status);
+  const calcSell = r.base * (1 - num(d.discount) / 100), ch = charm(r.sell);
+  $("pcActions").innerHTML =
+    (r.sell > 0 && Math.abs(ch - r.sell) > 0.004 ? `<button class="btn ghost" type="button" data-act="charm">Round to ${money(ch)}</button>` : "") +
+    (r.manual ? `<button class="btn ghost" type="button" data-act="calc">Back to calculated ${money(calcSell)}</button>` : "");
+  $("pcCalc").innerHTML = r.manual
+    ? `Calculated price: ${money(calcSell)} (${modeTxt}${num(d.discount) ? `, ${num(d.discount)}% off` : ""})`
+    : disc > 0 ? `Before discount: ${money(r.base)}` : "";
+  let html = "";
   if (r.status === "loss" && r.cost > 0) {
-    const pctFee = etsyOn ? (num(s.etsyTx) + num(s.etsyPay)) / 100 : 0;
-    const fixed = etsyOn ? num(s.etsyFixed) + num(s.etsyListing) : 0;
-    const need = (r.cost + fixed) / (1 - pctFee) / (1 - disc / 100);
-    html += `<p class="hint bad">Selling at a loss${etsyOn ? " after Etsy fees" : ""}. To break even${disc ? ` with a ${disc}% discount` : ""}, the ${r.manual ? "" : "base "}price needs to be at least <b class="bad">${money(need)}</b>.</p>`;
+    const need = (r.cost + e.fixed) / (1 - e.pct);
+    html = `<p class="hint bad">Selling at a loss${etsyOn ? " after Etsy fees" : ""}. To break even, the price needs to be at least <b class="bad">${money(need)}</b>.</p>`;
   }
   $("tiers").innerHTML = html;
 
@@ -1186,6 +1225,46 @@ async function saveFile(blob, filename, type) {
   return true;
 }
 
+/* ---------- editable price card: price, profit and margin drive each other ---------- */
+function etsyParts(d, s = state.settings) {
+  return d.etsy ? { pct: (num(s.etsyTx) + num(s.etsyPay)) / 100, fixed: num(s.etsyFixed) + num(s.etsyListing) } : { pct: 0, fixed: 0 };
+}
+function setPrice(price) {
+  const v = Math.round(price * 100) / 100;
+  if (!(v > 0) || !Number.isFinite(v)) return;
+  state.draft.finalPrice = String(v);
+  markDirty(); renderCalc();
+}
+// Price that leaves `profit` after cost and fees: P - cost - (pct·P + fixed) = profit
+const priceForProfit = (profit) => { const r = calc(state.draft), e = etsyParts(state.draft); return (profit + r.cost + e.fixed) / (1 - e.pct); };
+// Price that leaves `m`% margin: P - cost - pct·P - fixed = m·P
+const priceForMargin = (m) => { const r = calc(state.draft), e = etsyParts(state.draft), k = 1 - e.pct - m / 100; return k > 0 ? (r.cost + e.fixed) / k : NaN; };
+$("pcPrice").addEventListener("input", (e) => {
+  if (e.target.value.trim() === "") return;
+  setPrice(num(e.target.value));
+});
+$("pcProfit").addEventListener("input", (e) => {
+  const t = parseFloat(e.target.value);
+  if (Number.isFinite(t)) setPrice(priceForProfit(t));
+});
+$("pcMargin").addEventListener("input", (e) => {
+  const m = parseFloat(e.target.value);
+  if (Number.isFinite(m) && m < 95) setPrice(priceForMargin(m));
+});
+["pcPrice", "pcProfit", "pcMargin"].forEach((id) => $(id).addEventListener("change", () => renderCalc()));
+$("priceCard").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const r = calc(state.draft);
+  if (b.dataset.step) {
+    const dir = +b.dataset.dir;
+    if (b.dataset.step === "price") setPrice(Math.max(0.01, r.sell + dir));
+    if (b.dataset.step === "profit") setPrice(priceForProfit(Math.round(r.profit) + dir));
+    if (b.dataset.step === "margin") setPrice(priceForMargin(Math.round(r.margin * 100) + dir));
+  } else if (b.dataset.act === "charm") setPrice(charm(r.sell));
+  else if (b.dataset.act === "calc") { state.draft.finalPrice = ""; markDirty(); renderCalc(); }
+});
+
 /* ---------- free market check: search links, typed-in comparables, Ask Claude ---------- */
 const cur = (s = state.settings) => (String(s.currency || "USD").trim().toUpperCase() || "USD");
 // Which Etsy and Google storefront to search, from the location in Settings.
@@ -1254,7 +1333,6 @@ function renderFree(d, r) {
 $("compStats").addEventListener("click", (e) => {
   if (e.target.id !== "freeUse" || !freeSuggested) return;
   state.draft.finalPrice = String(freeSuggested);
-  $("p_finalPrice").value = state.draft.finalPrice;
   markDirty(); renderCalc(); toast("Price set. Tap Save to keep it");
 });
 $("askClaude").addEventListener("click", (e) => {
@@ -1324,7 +1402,6 @@ $("mktBody").addEventListener("click", (e) => {
   if (e.target.id !== "mktUse") return;
   const m = marketCache.get(state.currentId); if (!m) return;
   state.draft.finalPrice = String(Math.round(num(m.report.suggested_price) * 100) / 100);
-  $("p_finalPrice").value = state.draft.finalPrice;
   markDirty(); renderCalc(); toast("Price set. Tap Save to keep it");
 });
 
