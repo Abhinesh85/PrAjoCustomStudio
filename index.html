@@ -113,6 +113,20 @@ input.in:focus, select.in:focus, textarea.in:focus { outline: none; border-color
 .seg { display: inline-flex; background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; }
 .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--saffron); color: #1a0f05; }
+a.btn { text-decoration: none; }
+.mkt-divider { border-top: 1px dashed var(--line); margin: 4px 0; }
+.comp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.comp-chips span { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); }
+.ai-tag { font-size: 10.5px; letter-spacing: .08em; padding: 3px 8px; border-radius: 999px; background: var(--tint); color: var(--saffron); }
+.mkt-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mkt-grid > div { border: 1px solid var(--line); border-radius: 11px; padding: 9px 11px; background: var(--field); min-width: 0; }
+.mkt-grid small { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.mkt-grid b { font-family: var(--f-display); font-size: 18px; display: block; }
+.mkt-grid span { font-size: 12px; color: var(--muted); }
+.comps { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.comps a { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; font-size: 14px; min-height: 44px; align-items: center; }
+.comps a span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comps a small { color: var(--muted); }
 .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 700; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--saffron); flex: none; }
 .toggle small { display: block; font-weight: 500; font-size: 12.5px; color: var(--muted); }
@@ -357,8 +371,28 @@ body { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
             <label class="f"><span id="pctLabel">Markup %</span><input class="in num" id="p_pct" inputmode="decimal"></label>
             <label class="f"><span>Discount %</span><input class="in num" id="p_discount" inputmode="decimal"></label>
           </div>
+          <label class="f"><span>Your selling price ($)</span><input class="in num" id="p_finalPrice" inputmode="decimal" placeholder="Use calculated price"></label>
+          <p class="hint" id="finalHint"></p>
           <label class="toggle"><input type="checkbox" id="p_etsy"><span>Sold on Etsy <small id="etsyToggleHint"></small></span></label>
           <p class="hint" id="pctHint"></p>
+        </div>
+
+        <div class="card" id="mktCard">
+          <h2>Market check <span class="ai-tag">Free</span></h2>
+          <p class="hint" style="margin:0">Search for similar products, then type in the prices of a few listings you see. "In 20+ baskets" and "sold" counts on Etsy show strong demand.</p>
+          <div class="row">
+            <a class="btn ghost" id="srchEtsy" href="https://www.etsy.com/ca/" target="_blank" rel="noopener noreferrer">Search Etsy</a>
+            <a class="btn ghost" id="srchGoogle" href="https://www.google.com/shopping" target="_blank" rel="noopener noreferrer">Google Shopping</a>
+          </div>
+          <label class="f"><span>Prices of similar listings ($)</span><input class="in" id="p_comps" autocomplete="off" placeholder="e.g. 34.99, 42, 29.50"></label>
+          <div id="compStats" class="stack" style="gap:10px"></div>
+          <a class="btn ghost" id="askClaude" href="https://claude.ai/new" target="_blank" rel="noopener noreferrer">Ask Claude (copies a ready-made prompt)</a>
+          <p class="hint" style="margin:0" id="askHint">Free with your Claude plan. If the prompt isn't filled in when Claude opens, paste it.</p>
+          <div class="mkt-divider"></div>
+          <h2>Automatic AI check <span class="ai-tag">AI · paid</span></h2>
+          <p class="hint" style="margin:0" id="mktIntro">Searches Etsy and the web for you, then suggests a price and how strong demand is. Each check costs about $0.20–$0.40 USD in AI usage and takes up to a minute.</p>
+          <div id="mktBody" class="stack" style="gap:12px"></div>
+          <button class="btn secondary" type="button" id="mktBtn">Check the market</button>
         </div>
 
         <div class="card" id="engCard">
@@ -604,7 +638,10 @@ function calc(p, s = state.settings) {
   let base;
   if (p.mode === "margin") base = pct < 1 ? cost / (1 - pct) : 0;
   else base = cost * (1 + pct);
-  const sell = base * (1 - num(p.discount) / 100);
+  // A price typed by the seller replaces the calculated (and discounted) price.
+  const manual = num(p.finalPrice) > 0;
+  const list = manual ? num(p.finalPrice) : base;
+  const sell = manual ? list : base * (1 - num(p.discount) / 100);
   const feeOf = (price) => p.etsy && price > 0 ? etsyFee(price, s) : 0;
   const fee = feeOf(sell), baseFee = feeOf(base);
   const baseProfit = base - cost - baseFee;
@@ -612,7 +649,7 @@ function calc(p, s = state.settings) {
   const margin = sell > 0 ? profit / sell : 0;
   const markup = cost > 0 ? profit / cost : 0;
   const status = cost <= 0 ? "empty" : sell <= 0 ? "loss" : profit < -0.005 ? "loss" : margin * 100 < num(s.thin) ? "thin" : "ok";
-  return { blank, rate, labor, uv, laser, inkPerMl, inkFromPrinter, ink, uvHr, laserHr, uvMachine, laserMachine, cost, base, sell, fee, baseFee, baseProfit, feeOf, profit, margin, markup, status };
+  return { blank, rate, labor, uv, laser, inkPerMl, inkFromPrinter, ink, uvHr, laserHr, uvMachine, laserMachine, cost, base, manual, list, sell, fee, baseFee, baseProfit, feeOf, profit, margin, markup, status };
 }
 const charm = (x) => Math.max(0.99, Math.round(x + 0.01) - 0.01);
 // Etsy charges per unit sold: percentage fees, the payment fixed fee, and the listing fee (renewed on each sale).
@@ -620,7 +657,7 @@ const etsyFee = (price, s = state.settings) => price * (num(s.etsyTx) + num(s.et
 const statusPill = (st) => st === "empty" ? "" : st === "loss" ? '<span class="status loss">Loss</span>' : st === "thin" ? '<span class="status thin">Thin</span>' : '<span class="status ok">Profit OK</span>';
 
 function blankProduct() {
-  return { name: "", process: "uv", inkCost: "", inkMl: "0", uvMinutes: "0", laserMinutes: "0", packCost: "", packQty: "1", packaging: "0", overhead: "0", minutes: "0", laborRate: "", mode: "markup", pct: String(state.settings.markup), discount: "0", etsy: true, engraving: [] };
+  return { name: "", process: "uv", inkCost: "", inkMl: "0", uvMinutes: "0", laserMinutes: "0", packCost: "", packQty: "1", packaging: "0", overhead: "0", minutes: "0", laborRate: "", mode: "markup", pct: String(state.settings.markup), discount: "0", finalPrice: "", comps: "", etsy: true, engraving: [] };
 }
 
 /* ---------- storage ---------- */
@@ -687,7 +724,7 @@ function show(view) {
 document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
 
 /* ---------- calculator ---------- */
-const FIELDS = ["name", "inkCost", "inkMl", "uvMinutes", "laserMinutes", "packCost", "packQty", "packaging", "overhead", "minutes", "laborRate", "discount"];
+const FIELDS = ["name", "finalPrice", "comps", "inkCost", "inkMl", "uvMinutes", "laserMinutes", "packCost", "packQty", "packaging", "overhead", "minutes", "laborRate", "discount"];
 function sortedProducts() { return [...state.products.entries()].sort((a, b) => (a[1].name || "").localeCompare(b[1].name || "")); }
 
 function fillSelect() {
@@ -783,14 +820,18 @@ function renderCalc() {
     [`Labor (${num(d.minutes)} min)`, r.labor], ["Total cost", r.cost],
   ].filter(Boolean).map(([k, v]) => `<div><span>${k}</span><span>${money(v)}</span></div>`).join("");
 
-  const disc = num(d.discount);
+  const disc = r.manual ? 0 : num(d.discount);
   const etsyOn = !!d.etsy;
+  const calcPrice = r.base * (1 - num(d.discount) / 100);
+  $("finalHint").innerHTML = r.manual
+    ? `Using your price. The calculated price would be <b>${money(calcPrice)}</b>. Clear this box to go back to it.`
+    : `Leave empty to sell at the calculated price, <b>${money(calcPrice)}</b>.`;
   const pLbl = etsyOn ? "Profit after Etsy" : "Profit / unit";
   const feeLine = (fee) => etsyOn ? `<div class="charm num">Etsy fees <b>${money(fee)}</b> (incl. ${money(num(s.etsyListing))} listing) · cost ${money(r.cost)}</div>` : "";
   const charmP = charm(r.base), charmProfit = charmP - r.cost - r.feeOf(charmP);
   $("etsyToggleHint").textContent = etsyOn ? "Profit shown after Etsy fees and the listing fee" : "Turn on to subtract Etsy fees and the listing fee";
   let html = `
-    <div class="tier ${disc > 0 ? "" : r.status === "loss" ? "loss" : "hero-tier"}">
+    <div class="tier ${disc > 0 || r.manual ? "" : r.status === "loss" ? "loss" : "hero-tier"}">
       <div class="lbl">${d.mode === "margin" ? "Base · " + num(d.pct) + "% margin" : "Base · " + num(d.pct) + "% markup"}</div>
       <div class="price num">${money(r.base)}</div>
       <div class="per">per unit</div>
@@ -798,10 +839,10 @@ function renderCalc() {
       ${feeLine(r.baseFee)}
       <div class="charm num">Charm price <b>${money(charmP)}</b> → profit ${money(charmProfit)} (${(charmP > 0 ? charmProfit / charmP * 100 : 0).toFixed(1)}% margin)</div>
     </div>`;
-  if (disc > 0) {
+  if (disc > 0 || r.manual) {
     html += `
     <div class="tier ${r.status === "loss" ? "loss" : "hero-tier"}">
-      <div class="lbl">After ${disc}% discount</div>
+      <div class="lbl">${r.manual ? "Your price" : `After ${disc}% discount`}</div>
       <div class="price num">${money(r.sell)}</div>
       <div class="per">per unit</div>
       <div class="mini num"><div><small>${pLbl}</small><b class="${r.profit < 0 ? "bad" : "good"}">${money(r.profit)}</b></div><div><small>Margin</small><b>${(r.margin * 100).toFixed(1)}%</b></div></div>
@@ -815,19 +856,19 @@ function renderCalc() {
     const pctFee = etsyOn ? (num(s.etsyTx) + num(s.etsyPay)) / 100 : 0;
     const fixed = etsyOn ? num(s.etsyFixed) + num(s.etsyListing) : 0;
     const need = (r.cost + fixed) / (1 - pctFee) / (1 - disc / 100);
-    html += `<p class="hint bad">Selling at a loss${etsyOn ? " after Etsy fees" : ""}. To break even${disc ? ` with a ${disc}% discount` : ""}, the base price needs to be at least <b class="bad">${money(need)}</b>.</p>`;
+    html += `<p class="hint bad">Selling at a loss${etsyOn ? " after Etsy fees" : ""}. To break even${disc ? ` with a ${disc}% discount` : ""}, the ${r.manual ? "" : "base "}price needs to be at least <b class="bad">${money(need)}</b>.</p>`;
   }
   $("tiers").innerHTML = html;
 
   const rows = (s.tiers || []).map((t) => {
-    const price = r.base * (1 - num(t.pct) / 100);
+    const price = r.list * (1 - num(t.pct) / 100);
     const fee = etsyFee(price);
     const net = price - fee;
     const prof = net - r.cost;
     return `<tr><td>${num(t.qty)}+</td><td>${num(t.pct)}%</td><td>${money(price)}</td><td>${money(fee)}</td><td>${money(net)}</td><td class="${prof < 0 ? "bad" : "good"}">${money(prof)}</td></tr>`;
   }).join("");
   $("bulkTbl").innerHTML = `<thead><tr><th>Qty</th><th>Disc.</th><th>Price</th><th>Etsy fee</th><th>Net</th><th>Profit</th></tr></thead><tbody>${rows}</tbody>`;
-  $("etsyHint").textContent = `Based on the base price. Etsy fee = ${num(s.etsyTx)}% transaction + ${num(s.etsyPay)}% processing + ${money(num(s.etsyFixed))} + ${money(num(s.etsyListing))} listing. Profit is per unit after fees.`;
+  $("etsyHint").textContent = `Based on ${r.manual ? "your" : "the base"} price. Etsy fee = ${num(s.etsyTx)}% transaction + ${num(s.etsyPay)}% processing + ${money(num(s.etsyFixed))} + ${money(num(s.etsyListing))} listing. Profit is per unit after fees.`;
 
   $("deleteBtn").hidden = !state.currentId;
   $("saveBtn").textContent = state.currentId ? (state.dirty ? "Save changes" : "Saved") : "Save product";
@@ -839,6 +880,8 @@ function renderCalc() {
   $("rbProfitLbl").textContent = d.etsy ? "After Etsy" : "Profit";
   $("rbSave").textContent = state.currentId && !state.dirty ? "Saved" : "Save";
   $("rbSave").disabled = $("saveBtn").disabled;
+  renderFree(d, r);
+  renderMarket();
 }
 
 /* laser settings */
@@ -989,10 +1032,10 @@ $("s_tiers").addEventListener("click", (e) => {
 /* ---------- invoice ---------- */
 const inv = { lines: [] };
 function priceOptions(p) {
-  const r = calc(p), opts = [["Base", r.base]];
-  if (num(p.discount) > 0) opts.push([num(p.discount) + "% off", r.sell]);
+  const r = calc(p), opts = r.manual ? [["Your price", r.sell], ["Calculated", r.base]] : [["Base", r.base]];
+  if (!r.manual && num(p.discount) > 0) opts.push([num(p.discount) + "% off", r.sell]);
   opts.push(["Charm", charm(r.base)]);
-  (state.settings.tiers || []).filter((t) => num(t.pct) > 0).forEach((t) => opts.push([`Bulk ${num(t.qty)}+`, r.base * (1 - num(t.pct) / 100)]));
+  (state.settings.tiers || []).filter((t) => num(t.pct) > 0).forEach((t) => opts.push([`Bulk ${num(t.qty)}+`, r.list * (1 - num(t.pct) / 100)]));
   return opts.map(([l, v]) => [l, Math.round(v * 100) / 100]);
 }
 function openInvoice() {
@@ -1133,6 +1176,138 @@ async function saveFile(blob, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
   return true;
 }
+
+/* ---------- free market check: search links, typed-in comparables, Ask Claude ---------- */
+const compPrices = (text) => (String(text || "").match(/\d+(?:\.\d+)?/g) || []).map(Number).filter((n) => n > 0 && n < 100000);
+const charmUp = (x) => Math.ceil(x + 0.01) - 0.01;     // smallest .99 price at or above x
+const searchTerm = (d) => (d.name || "").trim() + (/custom|personali[sz]|engrav|monogram/i.test(d.name || "") ? "" : " personalized");
+// Lowest price that still leaves the "thin profit" margin after Etsy fees.
+function healthyMin(d, r, s = state.settings) {
+  const pct = (d.etsy ? (num(s.etsyTx) + num(s.etsyPay)) / 100 : 0) + num(s.thin) / 100;
+  const fixed = d.etsy ? num(s.etsyFixed) + num(s.etsyListing) : 0;
+  return pct < 1 ? (r.cost + fixed) / (1 - pct) : 0;
+}
+function claudePrompt(d, r, s = state.settings) {
+  return [
+    "I run a small Canadian custom-gift studio (UV printing and laser engraving) that sells on Etsy. Please research current prices for this product on Etsy and the web, then help me price it.",
+    "",
+    `Product: ${d.name || "(unnamed)"}`,
+    PROC_LABEL[d.process] ? `Made with: ${PROC_LABEL[d.process]}` : null,
+    `My true cost per unit: ${money(r.cost)} CAD`,
+    r.sell > 0 ? `My current price: ${money(r.sell)} CAD` : null,
+    d.etsy ? `Etsy fees per sale: ${num(s.etsyTx) + num(s.etsyPay)}% + ${money(num(s.etsyFixed) + num(s.etsyListing))}` : null,
+    "",
+    "Please give me:",
+    "1. 4–6 comparable listings with their prices (in CAD) and links",
+    "2. The typical market price and the low–high range",
+    "3. How strong demand looks, with evidence (sales counts, reviews, \"in baskets\", seasonality)",
+    "4. A recommended price for me and why, including my profit after fees",
+  ].filter((line) => line !== null).join("\n");
+}
+let freeSuggested = 0;
+function renderFree(d, r) {
+  const q = encodeURIComponent(searchTerm(d));
+  $("srchEtsy").href = d.name ? `https://www.etsy.com/ca/search?q=${q}` : "https://www.etsy.com/ca/";
+  $("srchGoogle").href = d.name ? `https://www.google.com/search?tbm=shop&gl=ca&q=${q}` : "https://www.google.com/shopping";
+  $("askClaude").href = "https://claude.ai/new?q=" + encodeURIComponent(claudePrompt(d, r));
+  const prices = compPrices(d.comps).sort((a, b) => a - b);
+  freeSuggested = 0;
+  if (!prices.length) { $("compStats").innerHTML = ""; return; }
+  const n = prices.length, avg = prices.reduce((t, x) => t + x, 0) / n;
+  const med = n % 2 ? prices[(n - 1) / 2] : (prices[n / 2 - 1] + prices[n / 2]) / 2;
+  const floor = r.cost > 0 ? healthyMin(d, r) : 0;
+  const below = charm(med) < floor;
+  freeSuggested = below ? charmUp(floor) : charm(med);
+  const profit = freeSuggested - r.cost - r.feeOf(freeSuggested);
+  const margin = freeSuggested > 0 ? profit / freeSuggested * 100 : 0;
+  $("compStats").innerHTML = `
+    <div class="mkt-grid num">
+      <div><small>Market avg</small><b>${money(avg)}</b><span>median ${money(med)}</span></div>
+      <div><small>Range</small><b>$${Math.round(prices[0])}–$${Math.round(prices[n - 1])}</b><span>${n} listing${n > 1 ? "s" : ""}</span></div>
+      <div><small>Suggested</small><b>${money(freeSuggested)}</b><span class="${profit < 0 ? "bad" : ""}">${margin.toFixed(0)}% margin</span></div>
+    </div>
+    <button class="btn primary" type="button" id="freeUse">Use ${money(freeSuggested)} as my price</button>
+    <p class="hint${below ? " bad" : ""}" style="margin:0">${below
+      ? `Similar listings sell for less than your healthy minimum of <b class="bad">${money(floor)}</b> (keeps a ${num(state.settings.thin)}% margin${d.etsy ? " after Etsy fees" : ""}). The suggestion is that minimum. A premium version, a bundle or a lower cost would help.`
+      : `Priced at the middle of the market. You keep <b>${money(profit)}</b> per sale${d.etsy ? " after Etsy fees" : ""}.`}
+      ${n < 3 ? " Add at least 3 prices for a more reliable average." : ""}</p>`;
+}
+$("compStats").addEventListener("click", (e) => {
+  if (e.target.id !== "freeUse" || !freeSuggested) return;
+  state.draft.finalPrice = String(freeSuggested);
+  $("p_finalPrice").value = state.draft.finalPrice;
+  markDirty(); renderCalc(); toast("Price set. Tap Save to keep it");
+});
+$("askClaude").addEventListener("click", (e) => {
+  if (!state.draft.name.trim()) { e.preventDefault(); toast("Give the product a name first"); return; }
+  const text = claudePrompt(state.draft, calc(state.draft));
+  navigator.clipboard?.writeText(text).then(() => toast("Prompt copied. Paste it into Claude if needed"), () => {});
+});
+
+/* ---------- AI market check (Supabase Edge Function "market-check") ---------- */
+let supa = null;
+const marketCache = new Map();          // product id -> { report, checkedAt }
+let mktBusy = false, mktError = "", mktFor = null;
+const DEMAND = { high: ["ok", "High demand"], medium: ["thin", "Medium demand"], low: ["loss", "Low demand"] };
+function renderMarket() {
+  if (mktFor !== state.currentId) { mktFor = state.currentId; if (!mktBusy) mktError = ""; }
+  const m = state.currentId ? marketCache.get(state.currentId) : null;
+  const btn = $("mktBtn");
+  btn.disabled = mktBusy || !supa;
+  btn.textContent = mktBusy ? "Checking the market… (up to a minute)" : m ? "Check again" : "Check the market";
+  if (!supa) { $("mktBody").innerHTML = `<p class="hint" style="margin:0">Sign in to use the market check.</p>`; return; }
+  let html = mktError ? `<p class="hint bad" style="margin:0">${esc(mktError)}</p>` : "";
+  if (m) {
+    const r = m.report, [cls, label] = DEMAND[r.demand] || DEMAND.medium;
+    const comps = (r.comparables || []).map((c) => {
+      const href = /^https?:\/\//i.test(c.url) ? ` href="${esc(c.url)}" target="_blank" rel="noopener noreferrer"` : "";
+      return `<a${href}><span>${esc(c.title)} <small>· ${esc(c.source)}</small></span><b class="num">${money(num(c.price))}</b></a>`;
+    }).join("");
+    html += `
+      <div class="mkt-grid num">
+        <div><small>Suggested</small><b>${money(num(r.suggested_price))}</b><span>$${Math.round(num(r.suggested_low))}–$${Math.round(num(r.suggested_high))}</span></div>
+        <div><small>Market avg</small><b>${money(num(r.market_average))}</b><span>$${Math.round(num(r.market_low))}–$${Math.round(num(r.market_high))}</span></div>
+        <div><small>Demand</small><b><span class="status ${cls}">${label.split(" ")[0]}</span></b><span>on Etsy &amp; web</span></div>
+      </div>
+      <button class="btn primary" type="button" id="mktUse">Use ${money(num(r.suggested_price))} as my price</button>
+      <p class="hint" style="margin:0">${esc(r.demand_notes)}</p>
+      <p class="hint" style="margin:0">${esc(r.reasoning)}</p>
+      ${comps ? `<div class="comps">${comps}</div>` : ""}
+      <p class="hint" style="margin:0">Checked ${esc(new Date(m.checkedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))} · prices in ${esc(r.currency || "CAD")} · AI estimates from public listings, so open a few before deciding.</p>`;
+  }
+  $("mktBody").innerHTML = html;
+}
+$("mktBtn").onclick = async () => {
+  if (!supa || mktBusy) return;
+  if (!state.draft.name.trim()) { toast("Give the product a name first"); return; }
+  if (!state.currentId || state.dirty) { await $("saveBtn").onclick(); if (!state.currentId) return; }
+  const id = state.currentId, d = state.draft, r = calc(d);
+  mktBusy = true; mktError = ""; renderMarket();
+  try {
+    const { data, error } = await supa.functions.invoke("market-check", {
+      body: { product: { name: d.name, process: PROC_LABEL[d.process] || "", cost: +r.cost.toFixed(2), currentPrice: +r.sell.toFixed(2), etsy: !!d.etsy } },
+    });
+    if (error) {
+      let msg = "The market check didn't work. Try again in a moment.";
+      try { const b = await error.context?.json?.(); if (b?.error) msg = b.error; } catch {}
+      throw new Error(msg);
+    }
+    if (!data?.report) throw new Error(data?.error || "No report came back. Try again.");
+    const entry = { report: data.report, checkedAt: data.checkedAt };
+    marketCache.set(id, entry);
+    if (store) store.collection("market").doc(id).set(entry);
+  } catch (e) {
+    mktError = navigator.onLine ? (e.message || "The market check didn't work.") : "You're offline. The market check needs internet.";
+  }
+  mktBusy = false; renderMarket();
+};
+$("mktBody").addEventListener("click", (e) => {
+  if (e.target.id !== "mktUse") return;
+  const m = marketCache.get(state.currentId); if (!m) return;
+  state.draft.finalPrice = String(Math.round(num(m.report.suggested_price) * 100) / 100);
+  $("p_finalPrice").value = state.draft.finalPrice;
+  markDirty(); renderCalc(); toast("Price set. Tap Save to keep it");
+});
 
 /* ---------- phone helpers ---------- */
 $("rbSave").onclick = () => $("saveBtn").click();
@@ -1371,6 +1546,12 @@ $("importMsg").addEventListener("click", async (e) => {
   };
   const db = makeStore(sb, user.id);
   store = db;
+  supa = sb;
+  db.collection("market").onSnapshot((snap) => {
+    marketCache.clear();
+    snap.docs.forEach((d) => marketCache.set(d.id, d.data()));
+    renderMarket();
+  }, () => {});
   syncStatus();
   db.refresh();
   let gotProducts = false;
