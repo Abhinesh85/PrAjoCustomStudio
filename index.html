@@ -839,6 +839,8 @@ const QUICK = [
   "Could you send a photo or logo? A PNG or JPG works best.",
 ];
 const msgs = { threads: [], current: null, log: [], loaded: false, chan: null };
+// Customers can attach a product ("📦 Name" + store link); make links tappable.
+const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">${u.includes("#p/") ? "View product ↗" : u}</a>`);
 const ago = (iso) => {
   const s = (Date.now() - new Date(iso)) / 1000;
   return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -879,7 +881,7 @@ function renderThread() {
       <div class="info"><b>${esc(t.customer_name)}</b><span>${esc(t.customer_email)}${t.product_name ? ` · about ${esc(t.product_name)}` : ""}</span></div>
       <button class="btn ghost" type="button" id="msgStatus">${t.status === "closed" ? "Reopen" : "Mark done"}</button>
     </div>
-    <div class="msg-log" id="msgLog">${msgs.log.map((m) => `<div class="mb ${m.sender === "owner" ? "own" : "cust"}">${esc(m.body)}<time>${esc(new Date(m.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</time></div>`).join("") || `<p class="hint">Loading…</p>`}</div>
+    <div class="msg-log" id="msgLog">${msgs.log.map((m) => `<div class="mb ${m.sender === "owner" ? "own" : "cust"}">${linkify(m.body)}<time>${esc(new Date(m.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</time></div>`).join("") || `<p class="hint">Loading…</p>`}</div>
     <div class="quick">${QUICK.map((q, i) => `<button type="button" data-q="${i}">${esc(q.length > 34 ? q.slice(0, 32) + "…" : q)}</button>`).join("")}</div>
     <p class="hint bad" id="msgErr" hidden style="margin:0"></p>
     <form class="reply-row" id="msgReply">
