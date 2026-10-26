@@ -334,6 +334,24 @@ nav.tabs button { position: relative; }
 .mfa-go { min-height: 50px; border: 0; border-radius: 999px; background: linear-gradient(180deg, #ecc876, #c99a3f); color: #1b1305; font-weight: 800; font-size: 16px; cursor: pointer; }
 .mfa-go[disabled] { opacity: .6; }
 .mfa-out { background: none; border: 0; color: #9a978f; text-decoration: underline; cursor: pointer; font-size: 14px; justify-self: center; }
+.ofilters { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.ofilters button { flex: none; border: 1px solid var(--line); background: none; color: inherit; border-radius: 999px; padding: 7px 12px; font: 600 13px var(--f-body, inherit); cursor: pointer; }
+.ofilters button span { opacity: .65; margin-left: 2px; }
+.ofilters button[aria-pressed="true"] { background: var(--saffron); color: #1b1305; border-color: var(--saffron); }
+.ofilters button.hot:not([aria-pressed="true"]) { border-color: #e5484d; color: #ff8f8f; }
+.card.late { border-color: #e5484d; box-shadow: 0 0 0 1px rgba(229, 72, 77, .35); }
+.stagebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.stg { font-weight: 800; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--tint); color: var(--saffron); }
+.stg-production { background: rgba(80, 140, 255, .16); color: #8fb4ff; }
+.stg-ready { background: rgba(170, 120, 255, .16); color: #c3a2ff; }
+.stg-shipped { background: rgba(60, 200, 200, .14); color: #7fe0e0; }
+.stg-completed { background: rgba(80, 200, 120, .14); color: #7fd99a; }
+.od { color: #ff8f8f; font-weight: 700; }
+.pay { margin-left: auto; font-size: 12px; font-weight: 700; color: #ff8f8f; }
+.pay.ok { color: var(--muted); }
+.oactions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.oactions .in { width: auto; max-width: 170px; padding: 7px 10px; font-size: 14px; }
+.oactions .btn.danger { margin-left: auto; }
 </style>
 
 <header class="hero">
@@ -554,9 +572,14 @@ nav.tabs button { position: relative; }
           <label class="f"><span>Buyer</span><input class="in" id="o_buyer" placeholder="Name or Etsy"></label>
           <label class="f"><span>Date</span><input class="in" id="o_date" type="date"></label>
         </div>
-        <label class="f"><span>Status</span>
-          <select class="in" id="o_status"><option>New</option><option>In progress</option><option>Shipped</option><option>Delivered</option><option>Paid</option></select>
-        </label>
+        <div class="row">
+          <label class="f"><span>Stage</span>
+            <select class="in" id="o_status"><option value="new">New</option><option value="production">In production</option><option value="ready">Ready</option><option value="shipped">Shipped</option><option value="completed">Completed</option></select>
+          </label>
+          <label class="f"><span>Payment</span>
+            <select class="in" id="o_pay"><option>Paid</option><option>Unpaid</option></select>
+          </label>
+        </div>
         <p class="hint num" id="o_preview"></p>
         <button class="btn primary" type="button" id="o_add">Add order</button>
       </div>
@@ -617,6 +640,19 @@ nav.tabs button { position: relative; }
             <label class="f"><span>Thin profit warning %</span><input class="in num" id="s_thin" inputmode="decimal"></label>
           </div>
           <p class="hint">A product shows "Thin" when its margin falls below this, and "Loss" when the price is under cost.</p>
+        </div>
+        <div class="card">
+          <h2>Order target times (days)</h2>
+          <div class="row">
+            <label class="f"><span>Start a new order</span><input class="in num" id="s_tNew" inputmode="decimal"></label>
+            <label class="f"><span>Finish production</span><input class="in num" id="s_tProd" inputmode="decimal"></label>
+          </div>
+          <div class="row">
+            <label class="f"><span>Ship or hand over</span><input class="in num" id="s_tReady" inputmode="decimal"></label>
+            <label class="f"><span>Shipping to delivered</span><input class="in num" id="s_tShip" inputmode="decimal"></label>
+          </div>
+          <label class="f"><span>Local delivery or pickup to done</span><input class="in num" id="s_tLocal" inputmode="decimal"></label>
+          <p class="hint">An order that stays in a stage longer than this turns red in Orders, and Telegram alerts you. You also get a 9 am summary on days with orders to work on.</p>
         </div>
         <div class="card">
           <h2>Bulk discounts</h2>
@@ -737,6 +773,7 @@ const DEFAULT_SETTINGS = {
   biz: "PrAjo Custom Studio", tag: "Custom Gifts & Personalized Moments", contact: "",
   taxName: "Sales tax", taxPct: 8.75,
   location: "Sacramento, California, USA", currency: "USD",
+  tNew: 1, tProd: 3, tReady: 1, tShip: 7, tLocal: 2,      // order stage targets, in days
 };
 
 const state = {
@@ -1259,11 +1296,43 @@ $("o_add").onclick = async () => {
   if (!p) { toast("Pick a product"); return; }
   const r = calc(p);
   try {
-    await addOrder({ date: $("o_date").value || today(), productId: id, product: p.name, qty: num($("o_qty").value, 1), buyer: $("o_buyer").value.trim(), status: $("o_status").value, unitCost: +r.cost.toFixed(2), unitPrice: +num($("o_price").value, r.sell).toFixed(2) });
+    await addOrder({ date: $("o_date").value || today(), productId: id, product: p.name, qty: num($("o_qty").value, 1), buyer: $("o_buyer").value.trim(), stage: $("o_status").value, stageAt: Date.now(), history: [{ stage: $("o_status").value, at: Date.now() }], payment: $("o_pay").value, unitCost: +r.cost.toFixed(2), unitPrice: +num($("o_price").value, r.sell).toFixed(2) });
     $("o_buyer").value = ""; $("o_qty").value = "1"; toast("Order added");
   } catch { toast("Could not add the order"); }
 };
-const STATUSES = ["New", "In progress", "Shipped", "Delivered", "Paid"];
+// Order stages: each has a target time (Settings); an order sitting in a stage longer than that is overdue.
+const STAGES = ["new", "production", "ready", "shipped", "completed"];
+const DAY = 86400000;
+const isLocal = (o) => /pickup|delivery/i.test(o.method || "") && !/download/i.test(o.method || "");
+function stageLabel(st, o) {
+  if (st === "shipped") return /pickup/i.test(o.method || "") ? "Ready for pickup" : /local delivery/i.test(o.method || "") ? "Out for delivery" : "Shipped";
+  return { new: "New", production: "In production", ready: "Ready", completed: "Completed" }[st];
+}
+// Orders saved before stages existed only have a status word.
+function stageOf(o) {
+  if (o.stage) return o.stage;
+  if (o.digital || /download/i.test(o.method || "")) return "completed";
+  return { "New": "new", "In progress": "production", "Shipped": "shipped", "Delivered": "completed", "Paid": o.source === "store" ? "new" : "completed" }[o.status] || "new";
+}
+const paymentOf = (o) => o.payment || "Paid";      // Etsy and website orders are paid up front
+const stageSince = (o) => o.stageAt || o.createdAt || Date.parse(o.date) || Date.now();
+function targetDays(st, o) {
+  const S = state.settings;
+  return { new: S.tNew, production: S.tProd, ready: S.tReady, shipped: isLocal(o) ? S.tLocal : S.tShip }[st];
+}
+function timing(o) {
+  const st = stageOf(o), days = (Date.now() - stageSince(o)) / DAY, t = num(targetDays(st, o));
+  return { st, days, target: t, overdue: st !== "completed" && t > 0 && days > t };
+}
+const fmtDays = (d) => d < 1 ? `${Math.max(1, Math.round(d * 24))}h` : `${Math.floor(d)}d`;
+let orderFilter = "all";
+async function setStage(ids, st) {
+  const at = Date.now();
+  await Promise.all(ids.map((id) => {
+    const o = state.orders.find((x) => x.id === id) || {};
+    return patchOrder(id, { stage: st, stageAt: at, history: [...(o.history || []), { stage: st, at }] });
+  }));
+}
 // Store-website orders carry what to make and where it goes.
 function itemDetails(o) {
   return `${o.digital ? `<div><small>Type</small>💾 Digital download (sent automatically)</div>` : ""}${o.options ? `<div><small>Options</small>${esc(o.options)}</div>` : ""}
@@ -1295,13 +1364,24 @@ function renderOrders() {
     const g = groups.find((x) => x.key === key);
     if (g) g.items.push(o); else groups.push({ key, items: [o] });
   }
-  $("okpis").innerHTML = `<div><small>Orders</small><b>${groups.length}</b></div><div><small>Revenue</small><b>${money(rev)}</b></div><div><small>Profit</small><b class="${prof < 0 ? "bad" : "good"}">${money(prof)}</b></div>`;
+  const lateN = groups.filter((g) => timing(g.items[0]).overdue).length;
+  $("okpis").innerHTML = `<div><small>Orders</small><b>${groups.length}</b></div><div><small>Overdue</small><b class="${lateN ? "bad" : "good"}">${lateN}</b></div><div><small>Revenue</small><b>${money(rev)}</b></div><div><small>Profit</small><b class="${prof < 0 ? "bad" : "good"}">${money(prof)}</b></div>`;
+  const live = groups.map((g) => ({ ...g, t: timing(g.items[0]) }));
+  const count = (f) => live.filter((g) => f === "overdue" ? g.t.overdue : g.t.st === f).length;
+  const shown = live.filter((g) => orderFilter === "all" || (orderFilter === "overdue" ? g.t.overdue : g.t.st === orderFilter))
+    .sort((a, b) => (b.t.overdue - a.t.overdue) || ((a.t.st === "completed") - (b.t.st === "completed")));
+  const chips = `<div class="ofilters" role="group" aria-label="Filter orders">${[["all", "All", live.length], ["overdue", "⚠ Overdue", count("overdue")], ...["new", "production", "ready", "shipped", "completed"].map((x) => [x, stageLabel(x, {}), count(x)])]
+    .map(([v, l, n]) => `<button type="button" data-of="${v}" aria-pressed="${orderFilter === v}"${v === "overdue" && n ? ' class="hot"' : ""}>${l} <span>${n}</span></button>`).join("")}</div>`;
   const line = (o) => `<div class="hint num" style="margin:0">${o.qty} × ${money(o.unitPrice)} · cost ${money(o.unitCost)} each · profit <b class="${o.unitPrice - o.unitCost < 0 ? "bad" : "good"}">${money((o.unitPrice - o.unitCost) * o.qty)}</b></div>`;
-  $("olist").innerHTML = groups.length ? groups.map(({ key, items }) => {
+  $("olist").innerHTML = !groups.length ? "" : chips + (shown.length ? "" : `<div class="empty"><b>Nothing here</b>No orders in this stage right now.</div>`) + shown.map(({ key, items, t }) => {
     const o = items[0], ids = items.map((x) => x.id).join(","), multi = items.length > 1;
     const total = items.reduce((t, x) => t + x.unitPrice * x.qty, 0);
     return `
-    <div class="card" style="gap:8px">
+    <div class="card${t.overdue ? " late" : ""}" style="gap:8px">
+      <div class="stagebar"><span class="stg stg-${t.st}">${stageLabel(t.st, o)}</span>${t.st === "completed" ? "" : t.overdue
+        ? `<span class="od">⚠ Overdue · ${fmtDays(t.days)} in this stage (target ${t.target}d)</span>`
+        : `<span class="hint" style="margin:0">${fmtDays(t.days)} in stage${t.target ? ` · due in ${fmtDays(Math.max(0, t.target - t.days))}` : ""}</span>`}
+        <span class="pay ${paymentOf(o) === "Paid" ? "ok" : ""}">${esc(paymentOf(o))}</span></div>
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div style="min-width:0"><b style="overflow-wrap:anywhere">${multi ? `${items.length} items` : esc(o.product)}</b><div class="hint" style="margin:2px 0 0">${o.source === "store" ? `<b class="ono">#${esc(o.orderNo || key.slice(-6).toUpperCase())}</b> · ` : ""}${esc(o.date)}${o.buyer ? " · " + esc(o.buyer) : ""}${o.invoice ? " · " + esc(o.invoice) : ""}</div></div>
         <b class="num" style="font-family:var(--f-display);font-size:18px">${money(total)}</b>
@@ -1310,22 +1390,32 @@ function renderOrders() {
       ${items.map((x) => `<div class="oitem"><b>${esc(x.product)}</b>${itemDetails(x)}${line(x)}</div>`).join("")}` : `${orderDetails(o)}
       ${line(o)}`}
       ${multi && o.orderTotal ? `<div class="hint num" style="margin:0">Customer paid ${money(o.orderTotal)} incl. shipping and tax</div>` : ""}
-      <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
-        <select class="in" data-status="${ids}" aria-label="Order status" style="max-width:180px;padding:7px 10px;font-size:14px">${STATUSES.map((s) => `<option${s === o.status ? " selected" : ""}>${s}</option>`).join("")}</select>
+      ${o.history?.length > 1 ? `<div class="hint" style="margin:0;font-size:12.5px">${o.history.map((h) => `${stageLabel(h.stage, o)} ${new Date(h.at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`).join(" → ")}</div>` : ""}
+      <div class="oactions">
+        ${t.st !== "completed" ? `<button class="btn primary" type="button" data-next="${ids}" data-to="${STAGES[STAGES.indexOf(t.st) + 1]}">${stageLabel(STAGES[STAGES.indexOf(t.st) + 1], o)} →</button>` : ""}
+        <select class="in" data-stage="${ids}" aria-label="Order stage">${STAGES.map((x) => `<option value="${x}"${x === t.st ? " selected" : ""}>${stageLabel(x, o)}</option>`).join("")}</select>
+        <select class="in" data-pay="${ids}" aria-label="Payment">${["Paid", "Unpaid", "Refunded"].map((x) => `<option${x === paymentOf(o) ? " selected" : ""}>${x}</option>`).join("")}</select>
         <button class="btn danger" type="button" data-del="${ids}">Remove</button>
       </div>
     </div>`;
-  }).join("") : `<div class="empty"><b>No orders yet</b>Log a sale on the left, or create an invoice and log it from there.</div>`;
+  }).join("") || `<div class="empty"><b>No orders yet</b>Log a sale on the left, or create an invoice and log it from there.</div>`;
 }
-$("olist").addEventListener("change", (e) => { const ids = e.target.dataset.status; if (ids) Promise.all(ids.split(",").map((id) => patchOrder(id, { status: e.target.value }))).catch(() => toast("Could not update")); });
+$("olist").addEventListener("change", (e) => {
+  const d = e.target.dataset;
+  if (d.stage) setStage(d.stage.split(","), e.target.value).catch(() => toast("Could not update"));
+  if (d.pay) Promise.all(d.pay.split(",").map((id) => patchOrder(id, { payment: e.target.value }))).catch(() => toast("Could not update"));
+});
 $("olist").addEventListener("click", (e) => {
+  const f = e.target.closest("[data-of]"); if (f) { orderFilter = f.dataset.of; renderOrders(); return; }
+  const nx = e.target.closest("[data-next]");
+  if (nx) { setStage(nx.dataset.next.split(","), nx.dataset.to).then(() => toast(`Moved to ${nx.textContent.replace(" →", "")}`)).catch(() => toast("Could not update")); return; }
   const id = e.target.dataset.del; if (!id) return;
   if (e.target.dataset.armed) { Promise.all(id.split(",").map(removeOrder)).catch(() => toast("Could not remove")); return; }
   e.target.dataset.armed = "1"; e.target.textContent = "Tap to confirm";
 });
 
 /* ---------- settings ---------- */
-const S_FIELDS = { s_location: "location", s_currency: "currency", s_inkPrice: "inkPrice", s_inkSize: "inkSize", s_inkShip: "inkShip", s_inkQty: "inkQty", s_inkTax: "inkTax", s_uvRate: "uvRate", s_uvWatts: "uvWatts", s_laserRate: "laserRate", s_laserWatts: "laserWatts", s_kwh: "kwh", s_laborRate: "laborRate", s_markup: "markup", s_thin: "thin", s_etsyTx: "etsyTx", s_etsyPay: "etsyPay", s_etsyFixed: "etsyFixed", s_etsyListing: "etsyListing", s_biz: "biz", s_tag: "tag", s_contact: "contact", s_taxName: "taxName", s_taxPct: "taxPct" };
+const S_FIELDS = { s_location: "location", s_currency: "currency", s_inkPrice: "inkPrice", s_inkSize: "inkSize", s_inkShip: "inkShip", s_inkQty: "inkQty", s_inkTax: "inkTax", s_uvRate: "uvRate", s_uvWatts: "uvWatts", s_laserRate: "laserRate", s_laserWatts: "laserWatts", s_kwh: "kwh", s_laborRate: "laborRate", s_markup: "markup", s_thin: "thin", s_etsyTx: "etsyTx", s_etsyPay: "etsyPay", s_etsyFixed: "etsyFixed", s_etsyListing: "etsyListing", s_biz: "biz", s_tag: "tag", s_contact: "contact", s_taxName: "taxName", s_taxPct: "taxPct", s_tNew: "tNew", s_tProd: "tProd", s_tReady: "tReady", s_tShip: "tShip", s_tLocal: "tLocal" };
 function fillSettings() {
   const s = state.settings;
   Object.entries(S_FIELDS).forEach(([id, k]) => { if (document.activeElement !== $(id)) $(id).value = s[k] ?? ""; });
