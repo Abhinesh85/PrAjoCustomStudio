@@ -14,8 +14,10 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<style id="antiFrame">html{display:none!important}</style>
+<script>/* refuse to be shown inside another website (clickjacking) */ if (self === top) document.getElementById("antiFrame").remove(); else top.location = self.location;</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R" crossorigin="anonymous"></script>
 <script src="config.js"></script>
 <style>
 body { margin: 0; }
@@ -859,7 +861,7 @@ document.querySelectorAll("nav.tabs button").forEach((b) => b.addEventListener("
 /* ---------- messages from the store (tables threads/messages, function "chat") ---------- */
 const QUICK = [
   "Thanks for reaching out! ",
-  "Yes, we can personalise that. What name and font would you like?",
+  "Yes, we can personalize that. What name and font would you like?",
   "Turnaround is usually 3–5 business days, plus shipping.",
   "Local pickup is available in Sacramento.",
   "For 10 or more pieces we offer a bulk discount. How many do you need?",
