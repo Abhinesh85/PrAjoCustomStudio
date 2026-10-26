@@ -305,6 +305,13 @@ nav.tabs button { position: relative; }
 .reply-row { display: flex; gap: 8px; align-items: flex-end; }
 .reply-row textarea { flex: 1; min-height: 48px; max-height: 160px; resize: none; }
 @media (prefers-reduced-motion: no-preference) { .tier, .pitem { transition: border-color .15s; } }
+.odet { display: grid; gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--field); border: 1px solid var(--line); font-size: 14px; overflow-wrap: anywhere; }
+.odet small { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.odet a { color: var(--saffron); }
+.odet .ops { font-weight: 700; }
+.otags { display: flex; flex-wrap: wrap; gap: 6px; }
+.otag { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--tint); color: var(--saffron); }
+.otag.m { background: none; border: 1px solid var(--line); color: inherit; }
 </style>
 
 <header class="hero">
@@ -1234,6 +1241,19 @@ $("o_add").onclick = async () => {
   } catch { toast("Could not add the order"); }
 };
 const STATUSES = ["New", "In progress", "Shipped", "Delivered", "Paid"];
+// Store-website orders carry what to make and where it goes.
+function orderDetails(o) {
+  if (o.source !== "store" && !o.options && !o.personalization && !o.ship) return "";
+  const icon = /pickup/i.test(o.method || "") ? "🏪" : /delivery/i.test(o.method || "") ? "🚗" : "📦";
+  const contact = [o.email && `<a href="mailto:${esc(o.email)}">${esc(o.email)}</a>`, o.phone && `<a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>`].filter(Boolean).join(" · ");
+  return `<div class="odet">
+    ${o.source === "store" ? `<div class="otags"><span class="otag">Website order</span>${o.method ? `<span class="otag m">${icon} ${esc(o.method)}</span>` : ""}</div>` : ""}
+    ${o.options ? `<div><small>Options</small>${esc(o.options)}</div>` : ""}
+    ${o.personalization ? `<div class="ops"><small>Personalization</small>✍️ ${esc(o.personalization)}</div>` : ""}
+    ${o.ship ? `<div><small>${/pickup/i.test(o.method || "") ? "Handover" : "Send to"}</small>${esc(o.ship)}</div>` : ""}
+    ${contact ? `<div><small>Contact</small>${contact}</div>` : ""}
+  </div>`;
+}
 function renderOrders() {
   fillOrderSelect();
   if (!$("o_date").value) $("o_date").value = today();
@@ -1249,6 +1269,7 @@ function renderOrders() {
         <div style="min-width:0"><b style="overflow-wrap:anywhere">${esc(o.product)}</b><div class="hint" style="margin:2px 0 0">${esc(o.date)}${o.buyer ? " · " + esc(o.buyer) : ""}${o.invoice ? " · " + esc(o.invoice) : ""}</div></div>
         <b class="num" style="font-family:var(--f-display);font-size:18px">${money(o.unitPrice * o.qty)}</b>
       </div>
+      ${orderDetails(o)}
       <div class="hint num" style="margin:0">${o.qty} × ${money(o.unitPrice)} · cost ${money(o.unitCost)} each · profit <b class="${o.unitPrice - o.unitCost < 0 ? "bad" : "good"}">${money((o.unitPrice - o.unitCost) * o.qty)}</b></div>
       <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
         <select class="in" data-status="${o.id}" aria-label="Order status" style="max-width:180px;padding:7px 10px;font-size:14px">${STATUSES.map((s) => `<option${s === o.status ? " selected" : ""}>${s}</option>`).join("")}</select>
