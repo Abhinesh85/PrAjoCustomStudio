@@ -312,6 +312,10 @@ nav.tabs button { position: relative; }
 .otags { display: flex; flex-wrap: wrap; gap: 6px; }
 .otag { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--tint); color: var(--saffron); }
 .otag.m { background: none; border: 1px solid var(--line); color: inherit; }
+.oitem { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); font-size: 14px; overflow-wrap: anywhere; }
+.oitem small { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.oitem .ops { font-weight: 700; }
+.ono { color: var(--saffron); }
 </style>
 
 <header class="hero">
@@ -1242,14 +1246,17 @@ $("o_add").onclick = async () => {
 };
 const STATUSES = ["New", "In progress", "Shipped", "Delivered", "Paid"];
 // Store-website orders carry what to make and where it goes.
-function orderDetails(o) {
+function itemDetails(o) {
+  return `${o.options ? `<div><small>Options</small>${esc(o.options)}</div>` : ""}
+    ${o.personalization ? `<div class="ops"><small>Personalization</small>✍️ ${esc(o.personalization)}</div>` : ""}`;
+}
+function orderDetails(o, withItem = true) {
   if (o.source !== "store" && !o.options && !o.personalization && !o.ship) return "";
   const icon = /pickup/i.test(o.method || "") ? "🏪" : /delivery/i.test(o.method || "") ? "🚗" : "📦";
   const contact = [o.email && `<a href="mailto:${esc(o.email)}">${esc(o.email)}</a>`, o.phone && `<a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>`].filter(Boolean).join(" · ");
   return `<div class="odet">
     ${o.source === "store" ? `<div class="otags"><span class="otag">Website order</span>${o.method ? `<span class="otag m">${icon} ${esc(o.method)}</span>` : ""}</div>` : ""}
-    ${o.options ? `<div><small>Options</small>${esc(o.options)}</div>` : ""}
-    ${o.personalization ? `<div class="ops"><small>Personalization</small>✍️ ${esc(o.personalization)}</div>` : ""}
+    ${withItem ? itemDetails(o) : ""}
     ${o.ship ? `<div><small>${/pickup/i.test(o.method || "") ? "Handover" : "Send to"}</small>${esc(o.ship)}</div>` : ""}
     ${contact ? `<div><small>Contact</small>${contact}</div>` : ""}
   </div>`;
@@ -1262,25 +1269,39 @@ function renderOrders() {
   const os = [...state.orders].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
   const rev = os.reduce((t, o) => t + o.unitPrice * o.qty, 0);
   const prof = os.reduce((t, o) => t + (o.unitPrice - o.unitCost) * o.qty, 0);
-  $("okpis").innerHTML = `<div><small>Orders</small><b>${os.length}</b></div><div><small>Revenue</small><b>${money(rev)}</b></div><div><small>Profit</small><b class="${prof < 0 ? "bad" : "good"}">${money(prof)}</b></div>`;
-  $("olist").innerHTML = os.length ? os.map((o) => `
+  // One website checkout is saved as one row per item (ids "<session>-0", "-1", …); show it as one order.
+  const groups = [];
+  for (const o of os) {
+    const key = o.source === "store" ? o.id.replace(/-\d+$/, "") : o.id;
+    const g = groups.find((x) => x.key === key);
+    if (g) g.items.push(o); else groups.push({ key, items: [o] });
+  }
+  $("okpis").innerHTML = `<div><small>Orders</small><b>${groups.length}</b></div><div><small>Revenue</small><b>${money(rev)}</b></div><div><small>Profit</small><b class="${prof < 0 ? "bad" : "good"}">${money(prof)}</b></div>`;
+  const line = (o) => `<div class="hint num" style="margin:0">${o.qty} × ${money(o.unitPrice)} · cost ${money(o.unitCost)} each · profit <b class="${o.unitPrice - o.unitCost < 0 ? "bad" : "good"}">${money((o.unitPrice - o.unitCost) * o.qty)}</b></div>`;
+  $("olist").innerHTML = groups.length ? groups.map(({ key, items }) => {
+    const o = items[0], ids = items.map((x) => x.id).join(","), multi = items.length > 1;
+    const total = items.reduce((t, x) => t + x.unitPrice * x.qty, 0);
+    return `
     <div class="card" style="gap:8px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
-        <div style="min-width:0"><b style="overflow-wrap:anywhere">${esc(o.product)}</b><div class="hint" style="margin:2px 0 0">${esc(o.date)}${o.buyer ? " · " + esc(o.buyer) : ""}${o.invoice ? " · " + esc(o.invoice) : ""}</div></div>
-        <b class="num" style="font-family:var(--f-display);font-size:18px">${money(o.unitPrice * o.qty)}</b>
+        <div style="min-width:0"><b style="overflow-wrap:anywhere">${multi ? `${items.length} items` : esc(o.product)}</b><div class="hint" style="margin:2px 0 0">${o.source === "store" ? `<b class="ono">#${esc(o.orderNo || key.slice(-6).toUpperCase())}</b> · ` : ""}${esc(o.date)}${o.buyer ? " · " + esc(o.buyer) : ""}${o.invoice ? " · " + esc(o.invoice) : ""}</div></div>
+        <b class="num" style="font-family:var(--f-display);font-size:18px">${money(total)}</b>
       </div>
-      ${orderDetails(o)}
-      <div class="hint num" style="margin:0">${o.qty} × ${money(o.unitPrice)} · cost ${money(o.unitCost)} each · profit <b class="${o.unitPrice - o.unitCost < 0 ? "bad" : "good"}">${money((o.unitPrice - o.unitCost) * o.qty)}</b></div>
+      ${multi ? `${orderDetails(o, false)}
+      ${items.map((x) => `<div class="oitem"><b>${esc(x.product)}</b>${itemDetails(x)}${line(x)}</div>`).join("")}` : `${orderDetails(o)}
+      ${line(o)}`}
+      ${multi && o.orderTotal ? `<div class="hint num" style="margin:0">Customer paid ${money(o.orderTotal)} incl. shipping and tax</div>` : ""}
       <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
-        <select class="in" data-status="${o.id}" aria-label="Order status" style="max-width:180px;padding:7px 10px;font-size:14px">${STATUSES.map((s) => `<option${s === o.status ? " selected" : ""}>${s}</option>`).join("")}</select>
-        <button class="btn danger" type="button" data-del="${o.id}">Remove</button>
+        <select class="in" data-status="${ids}" aria-label="Order status" style="max-width:180px;padding:7px 10px;font-size:14px">${STATUSES.map((s) => `<option${s === o.status ? " selected" : ""}>${s}</option>`).join("")}</select>
+        <button class="btn danger" type="button" data-del="${ids}">Remove</button>
       </div>
-    </div>`).join("") : `<div class="empty"><b>No orders yet</b>Log a sale on the left, or create an invoice and log it from there.</div>`;
+    </div>`;
+  }).join("") : `<div class="empty"><b>No orders yet</b>Log a sale on the left, or create an invoice and log it from there.</div>`;
 }
-$("olist").addEventListener("change", (e) => { const id = e.target.dataset.status; if (id) patchOrder(id, { status: e.target.value }).catch(() => toast("Could not update")); });
+$("olist").addEventListener("change", (e) => { const ids = e.target.dataset.status; if (ids) Promise.all(ids.split(",").map((id) => patchOrder(id, { status: e.target.value }))).catch(() => toast("Could not update")); });
 $("olist").addEventListener("click", (e) => {
   const id = e.target.dataset.del; if (!id) return;
-  if (e.target.dataset.armed) { removeOrder(id).catch(() => toast("Could not remove")); return; }
+  if (e.target.dataset.armed) { Promise.all(id.split(",").map(removeOrder)).catch(() => toast("Could not remove")); return; }
   e.target.dataset.armed = "1"; e.target.textContent = "Tap to confirm";
 });
 
