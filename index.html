@@ -299,6 +299,9 @@ nav.tabs button { position: relative; }
 .msg-head .info span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .msg-log { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; padding: 4px 2px; }
 .mb { max-width: 84%; padding: 9px 13px; border-radius: 16px; font-size: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mph { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.mph a { display: block; width: 130px; height: 130px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(0, 0, 0, .15); background: rgba(0, 0, 0, .08); }
+.mph img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mb time { display: block; font-size: 11px; opacity: .65; margin-top: 3px; }
 .mb.cust { align-self: flex-start; background: var(--field); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
 .mb.own { align-self: flex-end; background: var(--saffron); color: #1a0f05; border-bottom-right-radius: 5px; }
@@ -906,7 +909,15 @@ const QUICK = [
   "For 10 or more pieces we offer a bulk discount. How many do you need?",
   "Could you send a photo or logo? A PNG or JPG works best.",
 ];
-const msgs = { threads: [], current: null, log: [], loaded: false, chan: null };
+const msgs = { threads: [], current: null, log: [], loaded: false, chan: null, urls: {} };
+// Customer photos live in a private bucket: ask the chat function for short-lived links (it checks the two-step sign-in).
+async function loadPhotoUrls(rows) {
+  const need = rows.flatMap((m) => (Array.isArray(m.attachments) ? m.attachments : [])).filter((p) => !msgs.urls[p]);
+  if (!need.length || !supa) return;
+  const { data } = await supa.functions.invoke("chat", { body: { action: "photo_urls", paths: need } });
+  Object.assign(msgs.urls, data?.urls || {});
+}
+const photoHtml = (m) => (Array.isArray(m.attachments) ? m.attachments : []).map((p) => msgs.urls[p] ? `<a href="${esc(msgs.urls[p])}" target="_blank" rel="noopener"><img src="${esc(msgs.urls[p])}" alt="Customer photo" loading="lazy"></a>` : "").join("");
 // Customers can attach a product ("📦 Name" + store link); make links tappable.
 const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">${u.includes("#p/") ? "View product ↗" : u}</a>`);
 const ago = (iso) => {
@@ -949,7 +960,7 @@ function renderThread() {
       <div class="info"><b>${esc(t.customer_name)}</b><span>${esc(t.customer_email)}${t.product_name ? ` · about ${esc(t.product_name)}` : ""}</span></div>
       <button class="btn ghost" type="button" id="msgStatus">${t.status === "closed" ? "Reopen" : "Mark done"}</button>
     </div>
-    <div class="msg-log" id="msgLog">${msgs.log.map((m) => `<div class="mb ${m.sender === "owner" ? "own" : "cust"}">${linkify(m.body)}<time>${esc(new Date(m.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</time></div>`).join("") || `<p class="hint">Loading…</p>`}</div>
+    <div class="msg-log" id="msgLog">${msgs.log.map((m) => `<div class="mb ${m.sender === "owner" ? "own" : "cust"}">${m.body === "📷 Photo" && (m.attachments || []).length ? "" : linkify(m.body)}${(m.attachments || []).length ? `<div class="mph">${photoHtml(m)}</div>` : ""}<time>${esc(new Date(m.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</time></div>`).join("") || `<p class="hint">Loading…</p>`}</div>
     <div class="quick">${QUICK.map((q, i) => `<button type="button" data-q="${i}">${esc(q.length > 34 ? q.slice(0, 32) + "…" : q)}</button>`).join("")}</div>
     <p class="hint bad" id="msgErr" hidden style="margin:0"></p>
     <form class="reply-row" id="msgReply">
@@ -964,9 +975,9 @@ async function openThread(id) {
   msgs.current = t; msgs.log = [];
   $("msgWrap").classList.add("reading");
   renderThreads();
-  const { data } = await supa.from("messages").select("id, sender, body, created_at").eq("thread_id", id).order("created_at").limit(500);
+  const { data } = await supa.from("messages").select("id, sender, body, created_at, attachments").eq("thread_id", id).order("created_at").limit(500);
   if (msgs.current?.id !== id) return;
-  msgs.log = data || []; renderThread();
+  msgs.log = data || []; await loadPhotoUrls(msgs.log); if (msgs.current?.id !== id) return; renderThread();
   if (t.owner_unread) { t.owner_unread = false; await supa.from("threads").update({ owner_unread: false }).eq("id", id); loadThreads(); }
 }
 $("msgList").addEventListener("click", (e) => { const b = e.target.closest(".msg-item"); if (b) openThread(b.dataset.t); });
@@ -1002,7 +1013,7 @@ function startMessages() {
     .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => loadThreads())
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (p) => {
       if (msgs.current && p.new.thread_id === msgs.current.id && !msgs.log.some((m) => m.id === p.new.id)) {
-        msgs.log.push(p.new); renderThread();
+        msgs.log.push(p.new); loadPhotoUrls([p.new]).then(renderThread); renderThread();
         if (p.new.sender === "customer" && !$("view-messages").hidden) supa.from("threads").update({ owner_unread: false }).eq("id", msgs.current.id);
       }
     })
