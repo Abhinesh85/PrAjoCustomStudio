@@ -339,6 +339,7 @@ nav.tabs button { position: relative; }
 .ofilters button span { opacity: .65; margin-left: 2px; }
 .ofilters button[aria-pressed="true"] { background: var(--saffron); color: #1b1305; border-color: var(--saffron); }
 .ofilters button.hot:not([aria-pressed="true"]) { border-color: #e5484d; color: #ff8f8f; }
+.card.flash { outline: 3px solid var(--gold, #d9a441); outline-offset: 2px; }
 .card.late { border-color: #e5484d; box-shadow: 0 0 0 1px rgba(229, 72, 77, .35); }
 .stagebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .stg { font-weight: 800; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--tint); color: var(--saffron); }
@@ -1377,7 +1378,7 @@ function renderOrders() {
     const o = items[0], ids = items.map((x) => x.id).join(","), multi = items.length > 1;
     const total = items.reduce((t, x) => t + x.unitPrice * x.qty, 0);
     return `
-    <div class="card${t.overdue ? " late" : ""}" style="gap:8px">
+    <div class="card${t.overdue ? " late" : ""}" style="gap:8px" data-ono="${esc(String(o.orderNo || ""))}" data-key="${esc(key)}">
       <div class="stagebar"><span class="stg stg-${t.st}">${stageLabel(t.st, o)}</span>${t.st === "completed" ? "" : t.overdue
         ? `<span class="od">⚠ Overdue · ${fmtDays(t.days)} in this stage (target ${t.target}d)</span>`
         : `<span class="hint" style="margin:0">${fmtDays(t.days)} in stage${t.target ? ` · due in ${fmtDays(Math.max(0, t.target - t.days))}` : ""}</span>`}
@@ -1399,6 +1400,14 @@ function renderOrders() {
       </div>
     </div>`;
   }).join("") || `<div class="empty"><b>No orders yet</b>Log a sale on the left, or create an invoice and log it from there.</div>`;
+  jumpToWantedOrder();
+}
+function jumpToWantedOrder() {
+  if (!wantOrder) return;
+  const el = [...$("olist").querySelectorAll(".card[data-key]")].find((c) => c.dataset.ono === wantOrder || c.dataset.key.endsWith(wantOrder) || c.dataset.key === wantOrder);
+  if (!el) return;
+  wantOrder = ""; el.scrollIntoView({ block: "center" }); el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 4000);
 }
 $("olist").addEventListener("change", (e) => {
   const d = e.target.dataset;
@@ -1811,6 +1820,10 @@ state.currentId = initialCurrent || null;
 let initialTab = "calc";
 try { initialTab = localStorage.getItem("prajo:tab") || "calc"; } catch {}
 if (location.hash === "#messages") initialTab = "messages";
+// Telegram links: #order=1001 (or an order id) opens that order; #orders opens the Orders tab.
+let wantOrder = (/^#order=([\w-]+)$/.exec(location.hash) || [])[1] || "";
+if (wantOrder || location.hash === "#orders") initialTab = "orders";
+if (wantOrder) orderFilter = "all";
 show(VIEWS.includes(initialTab) ? initialTab : "calc");
 
 /* ---------- cloud sync (Supabase) ----------
