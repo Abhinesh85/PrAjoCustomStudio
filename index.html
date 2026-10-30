@@ -919,7 +919,10 @@ async function loadPhotoUrls(rows) {
 }
 const photoHtml = (m) => (Array.isArray(m.attachments) ? m.attachments : []).map((p) => msgs.urls[p] ? `<a href="${esc(msgs.urls[p])}" target="_blank" rel="noopener"><img src="${esc(msgs.urls[p])}" alt="Customer photo" loading="lazy"></a>` : "").join("");
 // Customers can attach a product ("📦 Name" + store link); make links tappable.
-const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">${u.includes("#p/") ? "View product ↗" : u}</a>`);
+// Customers can send any link. Only links to the shop itself get the friendly "View product" label; everything else is shown in full so it can't pass for a shop link.
+const OWN_HOSTS = ["prajocustomstudio.com", "www.prajocustomstudio.com", "abhinesh85.github.io"];
+const isOwnLink = (u) => { try { const x = new URL(u.replace(/&amp;/g, "&")); return x.protocol === "https:" && OWN_HOSTS.includes(x.hostname); } catch { return false; } };
+const linkify = (t) => esc(t).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">${u.includes("#p/") && isOwnLink(u) ? "View product ↗" : u}</a>`);
 const ago = (iso) => {
   const s = (Date.now() - new Date(iso)) / 1000;
   return s < 60 ? "now" : s < 3600 ? `${Math.floor(s / 60)}m` : s < 86400 ? `${Math.floor(s / 3600)}h` : new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -2040,7 +2043,7 @@ async function mfaGate(sb) {
     for (const f of list?.all || []) if (f.status !== "verified") await sb.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
     const { data: en, error } = await sb.auth.mfa.enroll({ factorType: "totp", issuer: "PrAjo Custom Studio", friendlyName: "Authenticator " + new Date().toISOString().slice(0, 10) });
     if (error && /bearer|jwt|session|token/i.test(error.message)) return expired();
-    if (error) { box.innerHTML = `<div class="mfa-card"><h2 id="mfaTitle">Two-step sign-in</h2><p class="mfa-err">${error.message}</p><button class="mfa-out" type="button" id="mfaOut">Sign out</button></div>`; }
+    if (error) { box.innerHTML = `<div class="mfa-card"><h2 id="mfaTitle">Two-step sign-in</h2><p class="mfa-err">${esc(error.message)}</p><button class="mfa-out" type="button" id="mfaOut">Sign out</button></div>`; }
     else {
       factor = { id: en.id, setup: true };
       box.innerHTML = form(`
