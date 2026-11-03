@@ -1351,10 +1351,24 @@ async function setStage(ids, st) {
 // Store-website orders carry what to make and where it goes.
 function itemDetails(o) {
   return `${o.digital ? `<div><small>Type</small>💾 Digital download (sent automatically)</div>` : ""}${o.options ? `<div><small>Options</small>${esc(o.options)}</div>` : ""}
+    ${o.printPath ? `<div class="ops"><small>Print file</small><button class="btn" type="button" data-printfile="${esc(o.printPath)}" style="margin-top:4px">⬇ Download print file</button> <small style="display:block;opacity:.75;margin-top:4px">Design, name, font, color and position exactly as the customer set them. In xTool Studio, import it and set the width to the product size.</small></div>` : ""}
+    ${o.design ? `<div class="ops"><small>Design</small>🎨 ${esc(o.design)}${o.designOrig || o.designImg ? ` · <a href="${esc(o.designOrig || o.designImg)}" target="_blank" rel="noopener">⬇ Open print file</a>` : ""}${o.designImg ? `<br><a href="${esc(o.designOrig || o.designImg)}" target="_blank" rel="noopener"><img src="${esc(o.designImg)}" alt="${esc(o.design)}" loading="lazy" style="max-width:120px;max-height:120px;border-radius:10px;margin-top:6px;background:#fff"></a>` : ""}</div>` : ""}
     ${o.personalization ? `<div class="ops"><small>Personalization</small>✍️ ${esc(o.personalization)}</div>` : ""}`;
 }
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-printfile]"); if (!b) return;
+  const sb = window.__prajoSb; if (!sb) { alert("Sign in first to download print files."); return; }
+  const path = b.dataset.printfile, name = path.split("/").pop();
+  b.disabled = true; const t = b.textContent; b.textContent = "Getting the file…";
+  try {
+    const { data, error } = await sb.storage.from("print-files").createSignedUrl(path, 600, { download: name });
+    if (error || !data?.signedUrl) throw error || new Error("no link");
+    location.href = data.signedUrl;
+  } catch (err) { alert("Couldn't open the print file: " + (err.message || err)); }
+  b.disabled = false; b.textContent = t;
+});
 function orderDetails(o, withItem = true) {
-  if (o.source !== "store" && !o.options && !o.personalization && !o.ship) return "";
+  if (o.source !== "store" && !o.options && !o.personalization && !o.ship && !o.design) return "";
   const icon = /download/i.test(o.method || "") ? "💾" : /pickup/i.test(o.method || "") ? "🏪" : /delivery/i.test(o.method || "") ? "🚗" : "📦";
   const contact = [o.email && `<a href="mailto:${esc(o.email)}">${esc(o.email)}</a>`, o.phone && `<a href="tel:${esc(o.phone)}">${esc(o.phone)}</a>`].filter(Boolean).join(" · ");
   return `<div class="odet">
@@ -2081,6 +2095,7 @@ async function mfaGate(sb) {
     return;
   }
   const sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+  window.__prajoSb = sb;   // used by the Orders tab to open print files (private storage, owner only)
   sb.auth.onAuthStateChange((ev) => {
     if (ev === "PASSWORD_RECOVERY") showAuth(sb, "reset", "Choose a new password.");
     if (ev === "SIGNED_OUT") location.reload();
