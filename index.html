@@ -1355,6 +1355,54 @@ function itemDetails(o) {
     ${o.design ? `<div class="ops"><small>Design</small>🎨 ${esc(o.design)}${o.designOrig || o.designImg ? ` · <a href="${esc(o.designOrig || o.designImg)}" target="_blank" rel="noopener">⬇ Original design file</a>` : ""}${o.designImg ? `<br><a href="${esc(o.designOrig || o.designImg)}" target="_blank" rel="noopener"><img src="${esc(o.designImg)}" alt="${esc(o.design)}" loading="lazy" style="max-width:120px;max-height:120px;border-radius:10px;margin-top:6px;background:#fff"></a>` : ""}</div>` : ""}
     ${o.personalization ? `<div class="ops"><small>Personalization</small>✍️ ${esc(o.personalization)}</div>` : ""}`;
 }
+/* ---------- refund a card order (full, percent or dollar amount) through Stripe ---------- */
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-refund]"); if (!b) return;
+  const orderNo = Number(b.dataset.refund), total = Number(b.dataset.total), done = Number(b.dataset.refunded || 0), left = Math.max(0, Math.round((total - done) * 100) / 100);
+  if (left <= 0) { alert("This order has already been refunded in full."); return; }
+  document.getElementById("refundBox")?.remove();
+  const d = document.createElement("div"); d.id = "refundBox";
+  d.style.cssText = "position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);display:grid;place-items:center;padding:16px";
+  d.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="rfT" style="background:var(--panel,#15181f);color:inherit;border:1px solid var(--line,#333);border-radius:18px;padding:20px;max-width:420px;width:100%;display:grid;gap:12px">
+    <h3 id="rfT" style="margin:0">Refund order #${orderNo}</h3>
+    <div class="hint" style="margin:0">Order total ${money(total)}${done ? ` · already refunded ${money(done)}` : ""} · <b>${money(left)} left to refund</b></div>
+    <div style="display:grid;gap:8px">
+      <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="rfMode" value="full" checked> Full refund (everything that's left)</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="rfMode" value="percent"> A percent of the order total</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="radio" name="rfMode" value="amount"> A dollar amount</label>
+    </div>
+    <label id="rfValWrap" hidden class="f"><span id="rfValLbl" class="hint">Percent</span><input class="in" id="rfVal" type="number" inputmode="decimal" min="0" step="0.01"></label>
+    <div id="rfPrev" style="font-weight:700"></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px"><input type="checkbox" id="rfStock" checked style="margin-top:3px"> <span>If this refunds the whole order, put the stock back (untick if the item was already made or shipped)</span></label>
+    <p class="err" id="rfErr" hidden></p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn primary" id="rfGo" type="button">Send refund</button><button class="btn ghost" id="rfNo" type="button">Cancel</button></div>
+    <div class="hint" style="margin:0">The money goes back to the customer's card through Stripe, usually within 5 to 10 business days.</div></div>`;
+  document.body.appendChild(d);
+  const mode = () => d.querySelector('input[name="rfMode"]:checked').value, val = () => Number(d.querySelector("#rfVal").value);
+  const calc = () => { const m = mode(), v = val(); if (m === "full") return left; if (m === "percent") return Math.round(total * v) / 100; return Math.round(v * 100) / 100; };
+  const paint = () => {
+    const m = mode(); d.querySelector("#rfValWrap").hidden = m === "full"; d.querySelector("#rfValLbl").textContent = m === "percent" ? "Percent of the order total (1 to 100)" : "Amount in dollars";
+    const a = calc(), ok = a > 0 && a <= left + 0.001 && (m !== "percent" || (val() > 0 && val() <= 100));
+    d.querySelector("#rfPrev").textContent = ok ? `Refund ${money(a)} · ${money(Math.max(0, left - a))} stays with you` : m === "full" ? "" : "Enter a valid " + (m === "percent" ? "percent" : "amount") + (a > left ? ` (more than the ${money(left)} left)` : "");
+    d.querySelector("#rfGo").disabled = !ok; return ok ? a : 0;
+  };
+  d.addEventListener("input", paint); d.addEventListener("change", paint); paint();
+  d.querySelector("#rfNo").onclick = () => d.remove(); d.addEventListener("click", (ev) => { if (ev.target === d) d.remove(); });
+  d.querySelector("#rfGo").onclick = async () => {
+    const a = paint(); if (!a) return; const m = mode();
+    if (!confirm(`Send ${money(a)} back to the customer's card for order #${orderNo}? This can't be undone.`)) return;
+    const sb = window.__prajoSb, cfg = window.PRAJO_CONFIG || {}, go = d.querySelector("#rfGo"), err = d.querySelector("#rfErr"); err.hidden = true;
+    if (!sb) { err.textContent = "Sign in first."; err.hidden = false; return; }
+    go.disabled = true; go.textContent = "Sending…";
+    try {
+      const sess = (await sb.auth.getSession()).data.session;
+      const r = await fetch(cfg.url + "/functions/v1/checkout", { method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.anonKey, Authorization: `Bearer ${sess?.access_token || cfg.anonKey}` }, body: JSON.stringify({ action: "refund", orderNo, mode: m, value: m === "full" ? 0 : val(), restock: d.querySelector("#rfStock").checked }) });
+      const res = await r.json().catch(() => ({})); if (!r.ok) throw new Error(res.error || "Error " + r.status);
+      d.innerHTML = `<div style="background:var(--panel,#15181f);border:1px solid var(--line,#333);border-radius:18px;padding:20px;max-width:420px;display:grid;gap:10px"><h3 style="margin:0">↩ Refund sent</h3><div>${money(res.refunded)} is on its way back to the customer.${res.full ? " The order is now marked Refunded." : ` ${money(res.remaining)} of the order is still not refunded.`}</div><button class="btn primary" type="button" id="rfOk">Done</button></div>`;
+      d.querySelector("#rfOk").onclick = () => d.remove();
+    } catch (x) { err.textContent = x.message || String(x); err.hidden = false; go.disabled = false; go.textContent = "Send refund"; }
+  };
+});
 document.addEventListener("click", async (e) => {
   const mp = e.target.closest("[data-markpaid]"); if (!mp) return;
   const sb = window.__prajoSb, cfg = window.PRAJO_CONFIG || {}; if (!sb) { alert("Sign in first."); return; }
@@ -1422,7 +1470,7 @@ function renderOrders() {
       <div class="stagebar"><span class="stg stg-${t.st}">${stageLabel(t.st, o)}</span>${t.st === "completed" ? "" : t.overdue
         ? `<span class="od">⚠ Overdue · ${fmtDays(t.days)} in this stage (target ${t.target}d)</span>`
         : `<span class="hint" style="margin:0">${fmtDays(t.days)} in stage${t.target ? ` · due in ${fmtDays(Math.max(0, t.target - t.days))}` : ""}</span>`}
-        <span class="pay ${paymentOf(o) === "Paid" ? "ok" : ""}">${esc(paymentOf(o))}</span></div>
+        <span class="pay ${paymentOf(o) === "Paid" ? "ok" : ""}">${esc(paymentOf(o))}${o.refundedAmount && paymentOf(o) !== "Refunded" ? ` · ${money(o.refundedAmount)} refunded` : ""}</span></div>
       ${o.source === "store" && o.payVia && paymentOf(o) === "Unpaid" ? `<div class="odet" style="border:1px dashed var(--gold);border-radius:12px;padding:10px 12px"><b>⏳ Waiting for a bank transfer${o.orderTotal ? ` of ${money(o.orderTotal)}` : ""}</b><div class="hint" style="margin:4px 0 4px">${o.payApp || o.payFrom ? `They said they'll pay with <b>${esc(o.payApp || "?")}</b> from <b>${esc(o.payFrom || "?")}</b>.` : "Look in Zelle, Venmo, Cash App or Apple Cash."} Payment note should say <b>#${esc(o.orderNo)}</b>; if they forgot it, match the amount and that name.</div><div class="hint" style="margin:0 0 8px">${(() => { const d = Math.floor((Date.now() - (o.createdAt || Date.now())) / 86400000); return d >= 1 ? `⚠ Waiting ${d} day${d > 1 ? "s" : ""}. Consider messaging ${esc(o.buyer || "the customer")}.` : "Placed today."; })()} When the money arrives, tap Mark paid: stock goes down and the print files reach your Telegram.</div><button class="btn primary" type="button" data-markpaid="${esc(String(o.orderNo))}">✔ Mark paid</button></div>` : ""}
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div style="min-width:0"><b style="overflow-wrap:anywhere">${multi ? `${items.length} items` : esc(o.product)}</b><div class="hint" style="margin:2px 0 0">${o.source === "store" ? `<b class="ono">#${esc(o.orderNo || key.slice(-6).toUpperCase())}</b> · ` : ""}${esc(o.date)}${o.buyer ? " · " + esc(o.buyer) : ""}${o.invoice ? " · " + esc(o.invoice) : ""}</div></div>
@@ -1437,6 +1485,7 @@ function renderOrders() {
         ${t.st !== "completed" ? `<button class="btn primary" type="button" data-next="${ids}" data-to="${STAGES[STAGES.indexOf(t.st) + 1]}">${stageLabel(STAGES[STAGES.indexOf(t.st) + 1], o)} →</button>` : ""}
         <select class="in" data-stage="${ids}" aria-label="Order stage">${STAGES.map((x) => `<option value="${x}"${x === t.st ? " selected" : ""}>${stageLabel(x, o)}</option>`).join("")}</select>
         <select class="in" data-pay="${ids}" aria-label="Payment">${["Paid", "Unpaid", "Refunded"].map((x) => `<option${x === paymentOf(o) ? " selected" : ""}>${x}</option>`).join("")}</select>
+        ${o.source === "store" && !o.payVia && paymentOf(o) === "Paid" && o.orderTotal ? `<button class="btn" type="button" data-refund="${esc(String(o.orderNo))}" data-total="${Number(o.orderTotal)}" data-refunded="${Number(o.refundedAmount || 0)}">↩ Refund…</button>` : ""}
         <button class="btn danger" type="button" data-del="${ids}">Remove</button>
       </div>
     </div>`;
