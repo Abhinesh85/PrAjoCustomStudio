@@ -353,6 +353,11 @@ nav.tabs button { position: relative; }
 .od { color: #ff8f8f; font-weight: 700; }
 .pay { margin-left: auto; font-size: 12px; font-weight: 700; color: #ff8f8f; }
 .pay.ok { color: var(--muted); }
+/* refunds stand out: a partial refund is an amber pill, a full refund a red pill and a red edge on the card */
+.pay.part { color: #1b1305; background: #f2b84b; padding: 4px 10px; border-radius: 999px; }
+.pay.refunded { color: #fff; background: #d9534f; padding: 4px 10px; border-radius: 999px; }
+.card.isrefunded { border-left: 4px solid #d9534f; }
+.card.ispartial { border-left: 4px solid #f2b84b; }
 .oactions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .oactions .in { width: auto; max-width: 170px; padding: 7px 10px; font-size: 14px; }
 .oactions .btn.danger { margin-left: auto; }
@@ -1466,11 +1471,11 @@ function renderOrders() {
     const o = items[0], ids = items.map((x) => x.id).join(","), multi = items.length > 1;
     const total = items.reduce((t, x) => t + x.unitPrice * x.qty, 0);
     return `
-    <div class="card${t.overdue ? " late" : ""}" style="gap:8px" data-ono="${esc(String(o.orderNo || ""))}" data-key="${esc(key)}">
+    <div class="card${t.overdue ? " late" : ""}${paymentOf(o) === "Refunded" ? " isrefunded" : o.refundedAmount ? " ispartial" : ""}" style="gap:8px" data-ono="${esc(String(o.orderNo || ""))}" data-key="${esc(key)}">
       <div class="stagebar"><span class="stg stg-${t.st}">${stageLabel(t.st, o)}</span>${t.st === "completed" ? "" : t.overdue
         ? `<span class="od">⚠ Overdue · ${fmtDays(t.days)} in this stage (target ${t.target}d)</span>`
         : `<span class="hint" style="margin:0">${fmtDays(t.days)} in stage${t.target ? ` · due in ${fmtDays(Math.max(0, t.target - t.days))}` : ""}</span>`}
-        <span class="pay ${paymentOf(o) === "Paid" ? "ok" : ""}">${esc(paymentOf(o))}${o.refundedAmount && paymentOf(o) !== "Refunded" ? ` · ${money(o.refundedAmount)} refunded` : ""}</span></div>
+        <span class="pay ${paymentOf(o) === "Refunded" ? "refunded" : o.refundedAmount ? "part" : paymentOf(o) === "Paid" ? "ok" : ""}">${paymentOf(o) === "Refunded" ? `↩ Refunded${o.refundedAmount ? ` ${money(o.refundedAmount)}` : ""}` : o.refundedAmount ? `↩ ${money(o.refundedAmount)} refunded` : esc(paymentOf(o))}</span></div>
       ${o.source === "store" && o.payVia && paymentOf(o) === "Unpaid" ? `<div class="odet" style="border:1px dashed var(--gold);border-radius:12px;padding:10px 12px"><b>⏳ Waiting for a bank transfer${o.orderTotal ? ` of ${money(o.orderTotal)}` : ""}</b><div class="hint" style="margin:4px 0 4px">${o.payApp || o.payFrom ? `They said they'll pay with <b>${esc(o.payApp || "?")}</b> from <b>${esc(o.payFrom || "?")}</b>.` : "Look in Zelle, Venmo, Cash App or Apple Cash."} Payment note should say <b>#${esc(o.orderNo)}</b>; if they forgot it, match the amount and that name.</div><div class="hint" style="margin:0 0 8px">${(() => { const d = Math.floor((Date.now() - (o.createdAt || Date.now())) / 86400000); return d >= 1 ? `⚠ Waiting ${d} day${d > 1 ? "s" : ""}. Consider messaging ${esc(o.buyer || "the customer")}.` : "Placed today."; })()} When the money arrives, tap Mark paid: stock goes down and the print files reach your Telegram.</div><button class="btn primary" type="button" data-markpaid="${esc(String(o.orderNo))}">✔ Mark paid</button></div>` : ""}
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div style="min-width:0"><b style="overflow-wrap:anywhere">${multi ? `${items.length} items` : esc(o.product)}</b><div class="hint" style="margin:2px 0 0">${o.source === "store" ? `<b class="ono">#${esc(o.orderNo || key.slice(-6).toUpperCase())}</b> · ` : ""}${esc(o.date)}${o.buyer ? " · " + esc(o.buyer) : ""}${o.invoice ? " · " + esc(o.invoice) : ""}</div></div>
