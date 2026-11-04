@@ -1485,7 +1485,15 @@ function renderOrders() {
       ${items.map((x) => `<div class="oitem"><b>${esc(x.product)}</b>${itemDetails(x)}${line(x)}</div>`).join("")}` : `${orderDetails(o)}
       ${line(o)}`}
       ${multi && o.orderTotal ? `<div class="hint num" style="margin:0">Customer paid ${money(o.orderTotal)} incl. shipping and tax</div>` : ""}
-      ${o.history?.length > 1 ? `<div class="hint" style="margin:0;font-size:12.5px">${o.history.map((h) => `${stageLabel(h.stage, o)} ${new Date(h.at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`).join(" → ")}</div>` : ""}
+      ${(() => {   // a dated and timed log: order placed, each stage, payment and refunds
+        const when = (t) => new Date(t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        const ev = (o.history || []).map((h) => ({ at: h.at, text: stageLabel(h.stage, o) }));
+        if (o.createdAt && !ev.some((e) => Math.abs(e.at - o.createdAt) < 1000 && /new/i.test(e.text))) ev.push({ at: o.createdAt, text: "Order placed" });
+        if (o.paidAt) ev.push({ at: o.paidAt, text: "💰 Payment received" });
+        (o.refunds || []).forEach((r) => ev.push({ at: r.at, text: `↩ Refunded ${money(r.amount)}` }));
+        ev.sort((a, b) => a.at - b.at);
+        return ev.length > 1 ? `<div class="hint" style="margin:0;font-size:12.5px;display:grid;gap:2px">${ev.map((e) => `<div><span style="opacity:.75">${esc(when(e.at))}</span> · ${esc(e.text)}</div>`).join("")}</div>` : "";
+      })()}
       <div class="oactions">
         ${t.st !== "completed" ? `<button class="btn primary" type="button" data-next="${ids}" data-to="${STAGES[STAGES.indexOf(t.st) + 1]}">${stageLabel(STAGES[STAGES.indexOf(t.st) + 1], o)} →</button>` : ""}
         <select class="in" data-stage="${ids}" aria-label="Order stage">${STAGES.map((x) => `<option value="${x}"${x === t.st ? " selected" : ""}>${stageLabel(x, o)}</option>`).join("")}</select>
