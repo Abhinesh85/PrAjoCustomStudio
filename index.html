@@ -482,6 +482,14 @@ nav.tabs button { position: relative; }
           <p class="hint" id="pctHint"></p>
         </div>
 
+        <div class="card" id="varCard">
+          <h2>Versions <small style="font-weight:600;color:var(--muted)">(optional)</small></h2>
+          <p class="hint" style="margin-top:0">For one side / both sides, or packs of 1, 2 and 4. Each version gets its own cost, profit and price. A linked store listing follows them in order: the first version is the base price, the others become its add-ons.</p>
+          <div class="seg" role="group" aria-label="Quick setup"><button type="button" data-vp="sides" aria-pressed="false">One side / both sides</button><button type="button" data-vp="packs" aria-pressed="false">1 / 2 / 4 pack</button></div>
+          <div id="varList" class="stack" style="margin-top:10px"></div>
+          <button class="btn ghost" type="button" id="varAdd" style="margin-top:8px">+ Add version</button>
+        </div>
+
         <div class="card" id="mktCard">
           <h2>Market check <span class="ai-tag">Free</span></h2>
           <p class="hint" style="margin:0">Search for similar products, then type in the prices of a few listings you see. "In 20+ baskets" and "sold" counts on Etsy show strong demand.</p>
@@ -837,7 +845,7 @@ const etsyFee = (price, s = state.settings) => price * (num(s.etsyTx) + num(s.et
 const statusPill = (st) => st === "empty" ? "" : st === "loss" ? '<span class="status loss">Loss</span>' : st === "thin" ? '<span class="status thin">Thin</span>' : '<span class="status ok">Profit OK</span>';
 
 function blankProduct() {
-  return { name: "", process: "uv", inkCost: "", inkMl: "0", uvMinutes: "0", laserMinutes: "0", packCost: "", packQty: "1", packaging: "0", overhead: "0", minutes: "0", laborRate: "", mode: "markup", pct: String(state.settings.markup), discount: "0", finalPrice: "", comps: "", etsy: true, engraving: [] };
+  return { name: "", process: "uv", inkCost: "", inkMl: "0", uvMinutes: "0", laserMinutes: "0", packCost: "", packQty: "1", packaging: "0", overhead: "0", minutes: "0", laborRate: "", mode: "markup", pct: String(state.settings.markup), discount: "0", finalPrice: "", comps: "", etsy: true, variants: [], engraving: [] };
 }
 
 /* ---------- storage ---------- */
@@ -1036,19 +1044,28 @@ async function syncStorePrices() {
   if (!store || !supa || !state.loaded || !navigator.onLine) return;
   const prices = {};
   for (const [id, p] of state.products) {
-    const r = calc(p);
-    prices[id] = { name: p.name || "Untitled", sell: Math.round(r.sell * 100) / 100, cost: Math.round(r.cost * 100) / 100 };
+    const r = calc(p), vs = (p.variants || []).filter((v) => String(v.name || "").trim()), vc = vs.map((v) => variantCalc(p, v, r));
+    prices[id] = { name: p.name || "Untitled", sell: Math.round((vc.length ? vc[0].sell : r.sell) * 100) / 100, cost: Math.round((vc.length ? vc[0].cost : r.cost) * 100) / 100 };
+    if (vc.length > 1) prices[id].versions = vc.map((c) => Math.round(c.sell * 100) / 100);
   }
   const prev = store.all()["app/store-prices"];
   if (JSON.stringify(prev?.prices) !== JSON.stringify(prices)) store.doc("app/store-prices").set({ prices, updatedAt: Date.now() });
   // Listings linked to a product follow its selling price.
-  const { data, error } = await supa.from("listings").select("id, pricing_id, price").eq("price_source", "pricing").not("pricing_id", "is", null);
+  const { data, error } = await supa.from("listings").select("id, pricing_id, price, variations").eq("price_source", "pricing").not("pricing_id", "is", null);
   if (error || !data) return;   // listings table not set up yet
   for (const l of data) {
-    const pr = prices[l.pricing_id];
-    if (pr && pr.sell > 0 && Math.abs(pr.sell - Number(l.price)) > 0.004) {
-      await supa.from("listings").update({ price: pr.sell, updated_at: new Date().toISOString() }).eq("id", l.id);
+    const pr = prices[l.pricing_id], upd = {};
+    if (pr && pr.sell > 0 && Math.abs(pr.sell - Number(l.price)) > 0.004) upd.price = pr.sell;
+    // Versions become the listing's add-ons, matched by order (first = base price) to the option group with the same number of choices.
+    if (pr && pr.versions && Array.isArray(l.variations)) {
+      const gi = l.variations.findIndex((g) => (g.values || []).length === pr.versions.length);
+      if (gi >= 0) {
+        const g = l.variations[gi], adds = {};
+        g.values.forEach((val, i) => { const a = Math.round((pr.versions[i] - pr.versions[0]) * 100) / 100; if (i > 0 && a !== 0) adds[val] = a; });
+        if (JSON.stringify(g.adds || {}) !== JSON.stringify(adds)) upd.variations = l.variations.map((x, k) => (k === gi ? { ...x, adds } : x));
+      }
     }
+    if (Object.keys(upd).length) await supa.from("listings").update({ ...upd, updated_at: new Date().toISOString() }).eq("id", l.id);
   }
 }
 
@@ -1125,6 +1142,7 @@ function writeInputs() {
   FIELDS.forEach((f) => { const el = $("p_" + f); if (document.activeElement !== el) el.value = d[f] ?? ""; });
   const pctEl = $("p_pct"); if (document.activeElement !== pctEl) pctEl.value = d.pct ?? "";
   setMode(d.mode, false);
+  renderVariants();
 }
 function setMode(mode, convert) {
   const d = state.draft;
@@ -1149,6 +1167,45 @@ FIELDS.concat("pct").forEach((f) => {
   $("p_" + f).addEventListener("input", (e) => { state.draft[f] = e.target.value; markDirty(); renderCalc(); });
 });
 $("pSelect").addEventListener("change", (e) => loadDraft(e.target.value));
+
+/* ---------- versions: one side / both sides, packs of 1, 2, 4. cost = (blank + ink + packaging + machine) × units + overhead + labor + extra ---------- */
+function variantCalc(d, v, r = calc(d)) {
+  const scal = r.blank + num(d.packaging) + r.ink + r.uvMachine + r.laserMachine, flat = num(d.overhead) + r.labor;
+  const cost = scal * Math.max(1, num(v.qty, 1)) + flat + num(v.extra), pct = num(d.pct) / 100;
+  const base = d.mode === "margin" ? (pct < 1 ? cost / (1 - pct) : 0) : cost * (1 + pct), manual = num(v.price) > 0;
+  const sell = manual ? num(v.price) : base * (1 - num(d.discount) / 100), fee = d.etsy && sell > 0 ? etsyFee(sell) : 0;
+  return { cost, sell, profit: sell - cost - fee };
+}
+function renderVariants() {
+  const vs = state.draft.variants || [];
+  $("varList").innerHTML = vs.map((v, i) => `<div class="stack" data-vi="${i}" style="border:1px solid var(--line);border-radius:12px;padding:10px">
+    <label class="f"><span>Name${i === 0 ? " (the base version)" : ""}</span><input class="in" data-vf="name" value="${esc(v.name || "")}" placeholder="e.g. Both sides"></label>
+    <div class="row"><label class="f"><span>Units in it</span><input class="in num" data-vf="qty" inputmode="numeric" value="${esc(v.qty ?? "1")}"></label><label class="f"><span>Extra cost ($)</span><input class="in num" data-vf="extra" inputmode="decimal" value="${esc(v.extra ?? "0")}"></label></div>
+    <label class="f"><span>Price ($), empty = from your markup</span><input class="in num" data-vf="price" inputmode="decimal" value="${esc(v.price ?? "")}"></label>
+    <div class="pill-note num" data-vnote></div>
+    <button class="btn ghost" type="button" data-vdel="${i}">Remove this version</button></div>`).join("");
+  updateVarNotes();
+}
+function updateVarNotes() {
+  const d = state.draft, vs = d.variants || [], r = calc(d);
+  document.querySelectorAll("#varList [data-vi]").forEach((row) => {
+    const v = vs[+row.dataset.vi]; if (!v) return; const c = variantCalc(d, v, r);
+    row.querySelector("[data-vnote]").textContent = `Cost ${money(c.cost)} · sells ${money(c.sell)} · profit ${money(c.profit)}`;
+  });
+}
+document.querySelectorAll("[data-vp]").forEach((b) => b.addEventListener("click", () => {
+  const d = state.draft, ink = num(d.inkCost) > 0 ? String(d.inkCost) : "0";
+  d.variants = b.dataset.vp === "sides"
+    ? [{ name: "One side", qty: "1", extra: "0", price: "" }, { name: "Both sides", qty: "1", extra: ink, price: "" }]
+    : [{ name: "1 item", qty: "1", extra: "0", price: "" }, { name: "Set of 2", qty: "2", extra: "0", price: "" }, { name: "Set of 4", qty: "4", extra: "0", price: "" }];
+  markDirty(); renderVariants();
+}));
+$("varAdd").onclick = () => { (state.draft.variants = state.draft.variants || []).push({ name: "", qty: "1", extra: "0", price: "" }); markDirty(); renderVariants(); };
+$("varList").addEventListener("input", (e) => {
+  const f = e.target.dataset.vf, row = e.target.closest("[data-vi]"); if (!f || !row) return;
+  state.draft.variants[+row.dataset.vi][f] = e.target.value; markDirty(); updateVarNotes();
+});
+$("varList").addEventListener("click", (e) => { const b = e.target.closest("[data-vdel]"); if (!b) return; state.draft.variants.splice(+b.dataset.vdel, 1); markDirty(); renderVariants(); });
 
 function markDirty() { state.dirty = true; $("saveBtn").textContent = state.currentId ? "Save changes" : "Save product"; }
 
@@ -1231,6 +1288,7 @@ function renderCalc() {
   $("rbSave").disabled = $("saveBtn").disabled;
   renderFree(d, r);
   renderMarket();
+  updateVarNotes();
 }
 
 /* laser settings */
@@ -1289,7 +1347,7 @@ function renderProducts() {
     return `<button class="pitem" type="button" data-id="${id}">
       <span class="nm">${esc(p.name || "Untitled")}</span>
       <span class="rt"><b class="num">${money(r.sell)}</b>${statusPill(r.status)}</span>
-      <span class="meta num">${PROC_LABEL[p.process] ? PROC_LABEL[p.process] + " · " : ""}Cost ${money(r.cost)} · profit ${money(r.profit)} · ${(r.margin * 100).toFixed(0)}% margin${num(p.discount) ? " · " + num(p.discount) + "% off" : ""}</span>
+      <span class="meta num">${PROC_LABEL[p.process] ? PROC_LABEL[p.process] + " · " : ""}Cost ${money(r.cost)} · profit ${money(r.profit)} · ${(r.margin * 100).toFixed(0)}% margin${num(p.discount) ? " · " + num(p.discount) + "% off" : ""}${(p.variants || []).length > 1 ? " · " + p.variants.length + " versions" : ""}</span>
     </button>`;
   }).join("") || `<div class="empty">No products match “${esc(q)}”.</div>`;
 }
